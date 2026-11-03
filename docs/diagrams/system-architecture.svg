@@ -1,0 +1,152 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1530" viewBox="0 0 1600 1530" role="img" aria-labelledby="title description">
+  <title id="title">Second-hand Marketplace — System Architecture</title>
+  <desc id="description">Four layers: Buyer, Seller and Admin browser apps send requests to a shared Django backend. Shared services transact with PostgreSQL, where a local trigger queues durable scan jobs. A separate Python worker polls jobs, extracts versioned features, runs a trusted Random Forest pipeline and saves results. Offline training supplies approved artifacts. File storage holds listing images and private evidence. Inference is asynchronous and advisory.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#566780"/></marker>
+    <marker id="ai-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#8260b4"/></marker>
+    <style>
+      text { font-family: 'Segoe UI', Arial, sans-serif; fill: #172b45; }
+      .eyebrow { font-size: 17px; font-weight: 600; letter-spacing: 2px; fill: #526a84; }
+      .heading { font-size: 43px; font-weight: 700; letter-spacing: -1px; }
+      .subtitle { font-size: 23px; fill: #526a84; }
+      .number { font-size: 18px; font-weight: 700; letter-spacing: 2px; }
+      .layer { font-size: 29px; font-weight: 650; }
+      .note { font-size: 19px; fill: #526a84; }
+      .card-title { font-size: 25px; font-weight: 650; }
+      .body { font-size: 20px; fill: #415671; }
+      .small { font-size: 18px; fill: #526a84; }
+      .edge-label { font-size: 19px; fill: #415671; }
+      .panel { fill: #ffffff; stroke: #ced9e5; stroke-width: 1.6; }
+      .connector { fill: none; stroke: #566780; stroke-width: 2.4; stroke-linejoin: round; stroke-linecap: round; }
+      .async { fill: none; stroke: #8260b4; stroke-width: 2.5; stroke-dasharray: 9 7; stroke-linejoin: round; stroke-linecap: round; }
+    </style>
+  </defs>
+
+  <rect width="1600" height="1530" fill="#ffffff"/>
+  <text x="60" y="51" class="eyebrow">SECOND-HAND MARKETPLACE · FRAUD RISK DETECTION</text>
+  <text x="60" y="111" class="heading">System architecture</text>
+  <text x="60" y="151" class="subtitle">Three applications. One shared backend. Durable, asynchronous AI assessment.</text>
+
+  <!-- Layer labels stay outside the connection lanes. -->
+  <g transform="translate(60 222)">
+    <text class="number" fill="#2563a5">01</text>
+    <text y="43" class="layer">Presentation</text>
+    <text y="79" class="layer">layer</text>
+    <text y="116" class="note">Templates · Bootstrap · JS</text>
+  </g>
+  <g transform="translate(60 493)">
+    <text class="number" fill="#247d72">02</text>
+    <text y="43" class="layer">Business logic</text>
+    <text y="79" class="layer">layer</text>
+    <text y="116" class="note">One Django deployment</text>
+  </g>
+  <g transform="translate(60 810)">
+    <text class="number" fill="#ad741e">03</text>
+    <text y="43" class="layer">Database</text>
+    <text y="79" class="layer">layer</text>
+    <text y="116" class="note">PostgreSQL</text>
+  </g>
+  <g transform="translate(60 1120)">
+    <text class="number" fill="#8260b4">04</text>
+    <text y="43" class="layer">AI inference</text>
+    <text y="79" class="layer">layer</text>
+    <text y="116" class="note">Separate Python worker</text>
+  </g>
+
+  <!-- Presentation -->
+  <g>
+    <rect x="400" y="205" width="310" height="150" rx="14" fill="#eef5ff" stroke="#c8dbf0" stroke-width="1.6"/>
+    <rect x="760" y="205" width="310" height="150" rx="14" fill="#eef5ff" stroke="#c8dbf0" stroke-width="1.6"/>
+    <rect x="1120" y="205" width="310" height="150" rx="14" fill="#eef5ff" stroke="#c8dbf0" stroke-width="1.6"/>
+    <text x="425" y="248" class="card-title">Buyer App</text>
+    <text x="425" y="287" class="body">Browse · order · chat</text>
+    <text x="425" y="318" class="body">Reports and case history</text>
+    <text x="785" y="248" class="card-title">Seller App</text>
+    <text x="785" y="287" class="body">Listings · sales · chat</text>
+    <text x="785" y="318" class="body">Fulfilment and risk history</text>
+    <text x="1145" y="248" class="card-title">Admin App</text>
+    <text x="1145" y="287" class="body">Review · moderate · audit</text>
+    <text x="1145" y="318" class="body">Models, rules and exports</text>
+  </g>
+  <path d="M 555 355 V 405 H 1275 V 355 M 915 355 V 405" class="connector"/>
+  <text x="785" y="433" class="edge-label">HTTPS · forms · JSON polling</text>
+
+  <!-- Shared backend -->
+  <rect x="380" y="450" width="1070" height="250" rx="18" fill="#f4faf8" stroke="#d0e5df" stroke-width="1.6"/>
+  <rect x="400" y="480" width="310" height="180" rx="12" class="panel"/>
+  <rect x="760" y="480" width="310" height="180" rx="12" class="panel"/>
+  <rect x="1120" y="480" width="310" height="180" rx="12" class="panel"/>
+  <text x="425" y="522" class="card-title">Backend API</text>
+  <text x="425" y="562" class="body">Django URLs and views</text>
+  <text x="425" y="593" class="body">Forms and JSON endpoints</text>
+  <text x="425" y="624" class="body">Validation and responses</text>
+  <text x="785" y="522" class="card-title">Access policies</text>
+  <text x="785" y="562" class="body">Shared identity and sessions</text>
+  <text x="785" y="593" class="body">Roles, status and ownership</text>
+  <text x="785" y="624" class="body">CSRF and request limits</text>
+  <text x="1145" y="522" class="card-title">Shared services</text>
+  <text x="1145" y="562" class="body">Listings · orders · messaging</text>
+  <text x="1145" y="593" class="body">Moderation · audit · risk</text>
+  <text x="1145" y="624" class="body">ORM and scoped queries</text>
+  <path d="M 555 405 V 480" class="connector" marker-end="url(#arrow)"/>
+  <path d="M 710 570 H 760" class="connector" marker-end="url(#arrow)"/>
+  <path d="M 1070 570 H 1120" class="connector" marker-end="url(#arrow)"/>
+
+  <!-- Bidirectional service/database access -->
+  <path d="M 1275 660 V 744 H 555 V 790" class="connector" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+  <rect x="679" y="718" width="430" height="34" fill="#ffffff"/>
+  <text x="894" y="742" text-anchor="middle" class="edge-label">Transactions · authorized queries · current risk</text>
+
+  <!-- PostgreSQL container and internal durable queue -->
+  <rect x="400" y="790" width="1030" height="185" rx="16" fill="#fffaf0" stroke="#e8d9b8" stroke-width="1.6"/>
+  <text x="425" y="825" class="card-title">PostgreSQL</text>
+  <text x="1405" y="823" text-anchor="end" class="small">Constraints · row locks · immutable history</text>
+  <rect x="420" y="850" width="290" height="95" rx="10" class="panel"/>
+  <rect x="760" y="850" width="310" height="95" rx="10" class="panel"/>
+  <rect x="1120" y="850" width="290" height="95" rx="10" class="panel"/>
+  <text x="440" y="884" class="card-title">Marketplace data</text>
+  <text x="440" y="917" class="small">Users, revisions, orders, cases</text>
+  <text x="780" y="884" class="card-title">Durable scan jobs</text>
+  <text x="780" y="917" class="small">Context, versions, leases, retries</text>
+  <text x="1140" y="884" class="card-title">Risk results</text>
+  <text x="1140" y="917" class="small">Scores, factors, model metadata</text>
+  <path d="M 710 897 H 760" class="connector" marker-end="url(#arrow)"/>
+  <text x="735" y="966" text-anchor="middle" class="small">Local trigger queues scan in publication transaction</text>
+
+  <!-- AI is a consumer, not a synchronous database call -->
+  <path d="M 915 975 V 1045 H 555 V 1100" class="async" marker-end="url(#ai-arrow)"/>
+  <text x="735" y="1020" text-anchor="middle" class="edge-label">Worker polls committed jobs</text>
+  <path d="M 1275 1100 V 975" class="connector" marker-end="url(#arrow)"/>
+  <text x="1300" y="1024" class="edge-label">Save result</text>
+  <text x="1300" y="1052" class="edge-label">+ complete job</text>
+  <rect x="400" y="1100" width="310" height="140" rx="14" fill="#f5f0fc" stroke="#dcd0ed" stroke-width="1.6"/>
+  <rect x="760" y="1100" width="310" height="140" rx="14" fill="#f5f0fc" stroke="#dcd0ed" stroke-width="1.6"/>
+  <rect x="1120" y="1100" width="310" height="140" rx="14" fill="#f5f0fc" stroke="#dcd0ed" stroke-width="1.6"/>
+  <text x="425" y="1141" class="card-title">Python risk worker</text>
+  <text x="425" y="1180" class="body">Claim · lease · retry</text>
+  <text x="425" y="1211" class="body">One stored result per job</text>
+  <text x="785" y="1141" class="card-title">Feature extraction</text>
+  <text x="785" y="1180" class="body">Read timestamped DB facts</text>
+  <text x="785" y="1211" class="body">Persist versioned snapshot</text>
+  <text x="1145" y="1141" class="card-title">Random Forest</text>
+  <text x="1145" y="1180" class="body">Trusted scikit-learn pipeline</text>
+  <text x="1145" y="1211" class="body">Score + observed factors</text>
+  <path d="M 710 1170 H 760" class="connector" marker-end="url(#arrow)"/>
+  <path d="M 1070 1170 H 1120" class="connector" marker-end="url(#arrow)"/>
+
+  <!-- Supporting storage and offline model lifecycle -->
+  <path d="M 380 575 H 355 V 1375 H 400" class="connector" stroke-dasharray="5 6" marker-end="url(#arrow)"/>
+  <rect x="400" y="1320" width="490" height="112" rx="12" class="panel"/>
+  <text x="425" y="1360" class="card-title">Persistent file storage</text>
+  <text x="425" y="1396" class="body">Listing images · access-controlled evidence</text>
+  <rect x="940" y="1320" width="490" height="112" rx="12" class="panel"/>
+  <text x="965" y="1360" class="card-title">Offline training and evaluation</text>
+  <text x="965" y="1396" class="body">Versioned dataset → registered pipeline</text>
+  <path d="M 1275 1320 V 1240" class="async" marker-end="url(#ai-arrow)"/>
+  <text x="1300" y="1287" class="small">Approved artifact</text>
+  <text x="60" y="1360" class="eyebrow">SUPPORTING</text>
+  <text x="60" y="1390" class="eyebrow">COMPONENTS</text>
+
+  <path d="M 60 1466 H 1540" stroke="#dce3eb" stroke-width="1.5"/>
+  <text x="60" y="1504" class="small">Asynchronous inference: publication does not wait for AI. Risk scores support human review; they do not trigger automatic penalties.</text>
+</svg>

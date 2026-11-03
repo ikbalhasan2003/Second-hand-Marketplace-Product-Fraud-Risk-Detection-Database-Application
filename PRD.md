@@ -6,6 +6,8 @@
 
 **Status:** Revised project plan; implementation and evaluation are pending.
 
+**System design:** [System Architecture Design](ARCHITECTURE.md)
+
 | Area | Project decision |
 | --- | --- |
 | Database | PostgreSQL; relational design, SQL constraints, triggers, indexes and transactions |

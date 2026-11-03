@@ -4,6 +4,8 @@
 
 **Related requirements:** [PRD.md](PRD.md), version 2.1
 
+**System design:** [ARCHITECTURE.md](ARCHITECTURE.md)
+
 **Updated:** 3 November 2026
 
 **Status:** Recommended implementation baseline; installation, implementation and verification are pending.
