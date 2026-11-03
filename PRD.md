@@ -1,6 +1,6 @@
 # Second-hand Marketplace & Product Fraud Risk Detection Database Application
 
-**Product Requirements Document - Version 2.0**
+**Product Requirements Document - Version 2.1**
 
 **Course:** Database Application Project Development | **Updated:** 3 November 2026
 
@@ -14,11 +14,12 @@
 | AI library and language | scikit-learn and Python; free and open source |
 | Proposed backend | Python with Django, using its authentication, ORM and migrations |
 | Proposed frontend | Django templates, Bootstrap and small JavaScript enhancements |
+| Application structure | Three separate web application modules: Admin App, Buyer App and Seller App |
 | Background processing | A Python worker polling a durable PostgreSQL scan-job table |
-| Deployment baseline | One web application, one worker, PostgreSQL and local file storage |
+| Deployment baseline | Three application modules hosted by one Django backend, plus one worker, shared PostgreSQL and local file storage |
 | External service dependency | No paid AI API, payment gateway or external message broker required |
 
-The web stack is a proposed implementation baseline. PostgreSQL, Random Forest and scikit-learn are the agreed technical choices. Pin supported dependency versions during implementation and record them with each trained model.
+The project has three applications: Admin, Buyer and Seller. The proposed hosting baseline places them in one repository and Django deployment, with separate entry points, views, templates, navigation and permission checks. They share backend services and one database; three independent deployments are not required for the course baseline. PostgreSQL, Random Forest and scikit-learn are agreed technical choices. Pin supported dependency versions during implementation and record them with each trained model.
 
 > Use scikit-learn to train a Random Forest model on the project's dataset, then load the fitted model to predict risk for new listings. The algorithm is the learning method; scikit-learn is the toolkit; the fitted classifier is the trained AI model.
 
@@ -26,14 +27,14 @@ The web stack is a proposed implementation baseline. PostgreSQL, Random Forest a
 
 Build a database-centric second-hand marketplace that helps buyers identify potentially risky listings and helps administrators prioritize evidence-based reviews. Assess listings when published or materially changed, and rescan them when relevant safety evidence changes.
 
-The application supports buying, selling, messaging, order tracking and fraud reporting. AI supplies a risk indicator and observed warning factors. A high score alone never blocks a member, removes a listing or establishes that fraud occurred.
+The Buyer App supports discovery, purchasing, messaging and reporting. The Seller App supports listing management, fulfilment and buyer conversations. The Admin App supports moderation, risk monitoring and configuration. AI supplies a shared risk indicator and observed warning factors. A high score alone never blocks a member, removes a listing or establishes that fraud occurred.
 
 The academic contribution is an integrated demonstration of relational database design, transactional business rules, reproducible machine learning and accountable moderation.
 
 ### 1.1 Required Outcomes
 
 1. Produce an ER diagram, data dictionary, normalization discussion and executable PostgreSQL migrations/DDL.
-2. Demonstrate registration, listing publication, search, private messaging, order placement and reporting.
+2. Demonstrate three distinct applications and an end-to-end workflow across Buyer, Seller and Admin: registration, listing publication, search, messaging, ordering and reporting.
 3. Train, evaluate, version and run a Random Forest classifier using scikit-learn.
 4. Preserve listing revisions, prediction history, moderation evidence and order transitions.
 5. Demonstrate concurrent order protection and recovery from a stopped or failed AI worker.
@@ -43,7 +44,7 @@ The academic contribution is an integrated demonstration of relational database 
 
 | Priority | Meaning | Features |
 | --- | --- | --- |
-| P0 - required | Complete before the assessed core demonstration | Accounts, listings and revisions, search, polling chat, atomic orders, reports, risk worker, trained model, moderation, versioned rules, audit and evaluation |
+| P0 - required | Complete before the assessed core demonstration | Separate Admin/Buyer/Seller applications, role-based access, listings and revisions, search, polling chat, atomic orders, reports, risk worker, trained model, moderation, versioned rules, audit and evaluation |
 | P1 - extension | Add after P0 acceptance checks pass | Seller appeals, in-app notifications and category-level analytics |
 | P2 - future research | Document as future work | Semantic duplicate detection, image similarity, advanced NLP, external notifications and natural-language analytics |
 
@@ -51,14 +52,16 @@ P1 and P2 work must not delay a complete P0 workflow.
 
 ## 2. Users, Roles and Access
 
-Buyer and seller are capabilities of the same member account. Registration does not force users into an exclusive buying or selling role.
+Use one shared identity store with explicit `buyer`, `seller` and `administrator` role memberships. The Buyer and Seller applications have separate registration/login entry points and role-specific workflows. A marketplace account may hold buyer access, seller access or both without duplicating its identity or email. Signing in or switching applications never grants a role by itself.
+
+Buyer registration grants buyer access; seller registration grants seller access. An existing authenticated member may explicitly enable the other marketplace role through an account workflow. Administrator identities are provisioned separately and are not used for marketplace buying or selling in P0. Enforce these memberships through Django groups/permissions rather than duplicating buyer and seller credential tables.
 
 | Actor | Allowed actions | Access boundary |
 | --- | --- | --- |
-| Visitor | Browse visible listings and their public risk summaries | Cannot order, message or submit reports |
-| Active member as buyer | Search, contact sellers, place orders, confirm receipt, report concerns and view own history | Cannot buy own listing or access another member's orders/evidence |
-| Active member as seller | Publish/edit own listings, manage eligible orders and view risk history for own listings | Cannot change scores, verdicts or another seller's listings |
-| Administrator | Review cases, moderate accounts/listings, publish rules, manage model activation and export approved training data | Every privileged change requires a recorded actor and reason |
+| Visitor | Browse public Buyer App listings and their risk summaries | Cannot order, message or submit reports |
+| Active buyer | Use the Buyer App to search, contact sellers, order, confirm receipt, report concerns and view own purchases | Requires buyer membership; cannot buy own listing or access others' orders/evidence |
+| Active seller | Use the Seller App to publish/edit own listings, manage sales and reply to buyers | Requires seller membership; cannot change scores, verdicts or another seller's listings |
+| Administrator | Use the Admin App to review cases, moderate accounts/listings, publish rules and manage models/exports | Requires provisioned administrator membership; every privileged change records an actor and reason |
 | Blocked member | Read own history and moderation notices; submit evidence or an appeal where supported | Cannot publish, purchase or send chat messages |
 
 Administrator privileges are provisioned through a trusted management command or existing administrator. Public registration and profile updates must never assign an administrator role. An analyst role is deferred; P0 dataset exports are administrator-only.
@@ -72,6 +75,7 @@ Administrator privileges are provisioned through a trusted management command or
 - **AUTH-03:** Enforce ownership, role and account status on the server for every protected action, including direct requests to an object's URL.
 - **AUTH-04:** Support `active`, `blocked` and `deactivated` account status. Deactivation is a soft action and preserves orders, reports, reviews and audit history.
 - **AUTH-05:** Show public profile information and account age. Keep email, contact details and private evidence outside public profiles and dataset exports.
+- **AUTH-06:** Use one identity and explicit role memberships across the three apps. Reject duplicate-email registration by directing existing users to sign in; adding buyer/seller access requires an authenticated, explicit action. Public flows must never grant administrator access. Blocked/deactivated users cannot enable additional roles.
 
 ### 3.2 Listing Creation, Revisions and Search
 
@@ -115,7 +119,7 @@ Orders represent purchase agreements and fulfilment status. Payment and refunds 
 
 ### 3.5 Fraud Reports and Moderation
 
-- **REPORT-01:** A signed-in member can report a listing using a reason category, description and up to three private evidence attachments. Self-reports are rejected. An optional order reference must belong to the reporter and target product; an order-linked report targets the purchased revision, otherwise it targets the current revision.
+- **REPORT-01:** A signed-in member with buyer access can report a listing through the Buyer App using a reason category, description and up to three private evidence attachments. Self-reports are rejected. An optional order reference must belong to the reporter and target product; an order-linked report targets the purchased revision, otherwise it targets the current revision. Sellers retain order-dispute and evidence workflows in the Seller App.
 - **REPORT-02:** Maintain report statuses `pending`, `reviewing`, `resolved` and `dismissed`, with administrator assignment and timestamped transition audit events.
 - **REPORT-03:** Allow the reporter to see their case status and public-facing outcome. Evidence is accessible only to that reporter and authorized administrators; it is not automatically disclosed to the reported seller.
 - **REPORT-04:** A review records the target revision, reviewer, reason, evidence summary and verdict: `fraud`, `legitimate` or `unresolved`. Neither a dismissed report nor the absence of reports establishes legitimacy.
@@ -234,11 +238,11 @@ Synthetic-only results support the claim "a working fraud risk screening prototy
 
 ### 7.1 Planned Domain Tables
 
-The plan expands the original ten-table sketch into 18 P0 domain tables and two optional P1 tables. Django-managed session/permission tables are additional infrastructure and are not counted below. Final column types and SQL names belong in the data dictionary and migrations.
+The plan expands the original ten-table sketch into 18 P0 domain tables and two optional P1 tables, shared by all three applications. Django-managed group, user-group membership, permission and session tables are additional infrastructure and are not counted below, but must appear in the final ERD/data dictionary. Buyer, seller and administrator membership uses these group relations as its single source of truth. Final column types and SQL names belong in the data dictionary and migrations.
 
 | # | Table | Key fields and purpose | Priority |
 | --- | --- | --- | --- |
-| 1 | `users` | PK user_id; email, password_hash, full_name, platform_role, location, private contact, status, created_at, deactivated_at | P0 |
+| 1 | `users` | PK user_id; email, password_hash, full_name, location, private contact, status, created_at, deactivated_at; role memberships via Django groups | P0 |
 | 2 | `categories` | PK category_id; unique name, description, is_active | P0 |
 | 3 | `products` | PK product_id; seller_id FK, current_revision_no, availability, visibility, context_version, created_at, updated_at | P0 |
 | 4 | `product_revisions` | Composite PK (product_id FK to products, revision_no); category_id FK, title, description, price, optional original_price, currency, condition, location, text_fingerprint, created_at | P0 |
@@ -268,6 +272,7 @@ Feature snapshots, prediction outputs and audit before/after records are intenti
 ### 7.3 Required Database Guarantees
 
 - Unique normalized email and category name; positive `NUMERIC` price; nonnegative optional original price; bounded risk score; constrained status values; UTC-aware timestamps.
+- Enforce unique user/group memberships and controlled role assignment. Listing sellers must have seller access and order buyers must have buyer access; administrator identities cannot acquire marketplace roles through public flows. All three apps reference the same user/product/order records.
 - A composite foreign key from `(products.product_id, current_revision_no)` to `product_revisions` ensures the current revision belongs to that product. Use a deferrable constraint so product/revision creation commits atomically.
 - Composite revision foreign keys protect orders, jobs, images, reports and reviews. An order-linked report matches its purchased revision; a review's optional report matches the same target revision. Enforce reporter/order ownership and correction-chain target consistency.
 - Permit one root moderation decision per revision and one successor per predecessor, enforced through uniqueness, chronology and target validation. Create decisions under a product lock so concurrent reviews cannot branch the canonical chain.
@@ -287,9 +292,41 @@ Create documented views such as `current_listing_risk`, `admin_review_queue` and
 
 Deliver ERD cardinalities, the data dictionary, migrations, custom trigger SQL, deterministic seeds and representative SQL queries. Examples must run against the implemented schema.
 
-## 8. Application Boundaries and Key Screens
+## 8. Three Applications and Shared Services
 
-Separate marketplace services, query/data access, feature extraction, inference and offline training. The web process and worker share versioned feature code; neither trains a model during a user request.
+### 8.1 Application Responsibilities
+
+| Application | Proposed entry point | Screens and workflows |
+| --- | --- | --- |
+| Buyer App (`buyer_app`) | `/buyer-app/` | Public catalog/search, listing details and risk warnings, buyer registration/login, purchase orders, seller conversations, receipt confirmation, report form and own case history |
+| Seller App (`seller_app`) | `/seller-app/` | Seller registration/login, seller dashboard, drafts/listing editor, image uploads, listing risk history, sales orders, acceptance/shipping actions and buyer conversations |
+| Admin App (`admin_app`) | `/admin-app/` | Restricted administrator login, risk dashboard, review queue, evidence/decisions, user/listing moderation, order disputes, audit lookup and model/rule/export management |
+
+Each app has its own navigation, landing/dashboard views and URL namespace. Shared design components may be reused, but each app exposes only its permitted actions. Django's default administration interface is not a substitute for the planned Admin App workflows or their audit requirements.
+
+### 8.2 Application Access and Integration Requirements
+
+- **APP-01:** Provide three distinct application modules and entry points. Buyer/Seller pages cannot expose administrator tools; Admin App routes require trusted administrator access even when called directly.
+- **APP-02:** Check the relevant application role, account status and resource ownership on every protected request. A buyer-only account cannot publish through Seller App endpoints; a seller-only account cannot order through Buyer App endpoints. Dual-role members may use both apps, with each action evaluated in its proper role.
+- **APP-03:** Reuse one identity, PostgreSQL database and marketplace service layer. A buyer order appears in the matching seller's sales view; seller status updates appear in the buyer's order view. Both apps read the same conversation and current risk result, while reports enter the Admin App queue.
+- **APP-04:** Provide separate login entry pages using shared authentication services and role-aware redirects. Validate return URLs. Application switching changes navigation only; it must not change role membership, elevate privileges or bypass blocking.
+
+### 8.3 Shared Backend and AI Services
+
+```mermaid
+flowchart TB
+    A[Admin App] --> D[Shared authentication and marketplace services]
+    B[Buyer App] --> D
+    C[Seller App] --> D
+    D --> E[Shared PostgreSQL database]
+    E --> F[Durable scan jobs]
+    F --> G[Python AI worker]
+    G --> E
+```
+
+Separate marketplace services, query/data access, feature extraction, inference and offline training. The three app modules invoke the same business rules instead of maintaining independent copies of order, chat, moderation or scoring logic. The web process and worker share versioned feature code; neither trains a model during a user request.
+
+### 8.4 Shared Screen Behaviour
 
 | Screen or operation | Required behaviour |
 | --- | --- |
@@ -306,7 +343,7 @@ Use browser forms/session requests for P0; define JSON endpoints where polling r
 
 ## 9. Security, Privacy and Reliability Requirements
 
-- **NFR-01 - Access:** Validate ownership and role server-side. Test private message, order, report and attachment access with unrelated users and blocked accounts.
+- **NFR-01 - Access:** Validate application role and ownership server-side. Test Admin/Buyer/Seller route isolation plus private message, order, report and attachment access with unrelated users, buyer-only/seller-only accounts and blocked accounts.
 - **NFR-02 - Inputs:** Use parameterized queries/ORM operations, escaped templates, field validation and upload limits. Do not render user HTML or accept client-supplied actor/role fields as authority.
 - **NFR-03 - Files:** Initially accept JPEG/PNG/WebP images up to 5 MB each, at most six listing images and three report images. Verify decoded type and dimensions, reject executable/SVG uploads, generate storage names and serve private evidence through authorization checks.
 - **NFR-04 - Sessions:** Use secure cookies and HTTPS when deployed, CSRF protection, password validators and login throttling. Configure/test message, listing and report rate limits. Authentication failures must not reveal whether an email exists.
@@ -354,6 +391,9 @@ If a target is missed, report the actual measurement and corrective plan rather 
 | AC-18 | Model evaluation | Rules, Logistic Regression and Random Forest results include precision, recall, F1, average precision and confusion matrices; synthetic/real results are separate |
 | AC-19 | Version changes | Model activation/rollback and rule publication are audited, schedule rescans and preserve historical results |
 | AC-20 | Recovery and delivery | Database/media restore works and the core demo runs without paid external services |
+| AC-21 | Three applications | Admin, Buyer and Seller have distinct entry points, login pages, dashboards/navigation and assigned workflows |
+| AC-22 | Application isolation | Buyer-only/seller-only accounts cannot perform the opposite role's protected actions; neither can reach Admin tools; switching apps never grants roles |
+| AC-23 | Cross-application workflow | Seller publishes; buyer sees the same listing/risk, messages and orders; seller fulfils; buyer reports; Admin reviews; all apps show consistent authorized state |
 
 Use integration tests against PostgreSQL for triggers, row locks, partial indexes and transactions; SQLite does not verify these requirements. Add focused feature-extraction, permission and state-transition tests. Manual UI checks cover warning text, accessibility and mobile layouts.
 
@@ -361,12 +401,12 @@ Use integration tests against PostgreSQL for triggers, row locks, partial indexe
 
 | Phase | Work package | Exit evidence |
 | --- | --- | --- |
-| 1 - Design | Confirm P0 scope, proposed stack, state diagrams, ERD, data dictionary and initial feature contract | Reviewed design and explicit open assumptions; no undefined payment behaviour |
-| 2 - Database and accounts | Migrations, constraints, queue triggers, audit infrastructure, accounts, revisions, uploads and search | AC-01 to AC-04 and ownership checks pass using assessment fixtures |
-| 3 - Marketplace workflow | Conversations, orders, idempotency, cancellation/expiry and private reports | AC-09 to AC-13 pass, including concurrent order test |
+| 1 - Design | Confirm three-app scope, shared backend, role matrix, proposed stack, state diagrams, ERD and feature contract | Reviewed app boundaries and explicit open assumptions; no undefined payment behaviour |
+| 2 - Database and accounts | Shared migrations, role groups, sessions, three app entry points, queue triggers, revisions, uploads and search | AC-01 to AC-04 and AC-22 role checks pass using assessment fixtures |
+| 3 - Buyer/Seller workflows | Separate buyer/seller dashboards, shared conversations/orders, idempotency, cancellation/expiry and private reports | AC-09 to AC-13 pass, including concurrent orders and cross-app status updates |
 | 4 - Dataset and model | Generator, provenance, splits, baselines, Random Forest and artifact registration | AC-16 to AC-18 pass; limitations documented |
-| 5 - Risk and moderation | Worker, risk UI, review queue, evidence decisions, rules/model lifecycle and rescans | AC-05 to AC-08, AC-14, AC-15 and AC-19 pass |
-| 6 - Demonstration and report | Performance, restore drill, usability, demo script and academic report | Remaining P0 criteria pass and AC-20 is demonstrated |
+| 5 - Admin and risk workflows | Admin App dashboard, worker, risk UI, review queue, evidence decisions, rules/model lifecycle and rescans | AC-05 to AC-08, AC-14, AC-15, AC-19 and completed AC-21 app workflows pass |
+| 6 - Demonstration and report | Three-app integration, performance, restore drill, usability, demo script and academic report | Remaining P0 criteria pass; AC-20 and AC-23 are demonstrated across the three applications |
 | 7 - Optional extension | Appeals, in-app notices and analytics | P0 remains passing; extension-specific ownership/audit checks pass |
 
 Phases are dependency gates, not calendar promises. Re-estimate after the schema and generator are demonstrated. Commit coherent changes and validation evidence to the configured GitHub repository.
@@ -382,6 +422,7 @@ Phases are dependency gates, not calendar promises. Re-estimate after the schema
 | Scope growth | Finish P0 before appeals, notifications, analytics or image research |
 | Administrator mistakes | Append-only corrections, reasons and an appeal path in P1 |
 | Proposed web framework | Django/templates is the baseline proposal; finalize in phase 1 without changing agreed AI/database choices |
+| Application hosting | Three separate app modules share one proposed Django host/database; independent hosts or domains can be evaluated later without duplicating business data |
 | Language and geography | Select demo currency, locations and supported listing language before generation; evaluate keyword limitations |
 | Evidence retention/storage | Document the course-demo retention/storage policy before collecting real participant data |
 
@@ -397,11 +438,11 @@ Phases are dependency gates, not calendar promises. Re-estimate after the schema
 1. This PRD with requirement IDs, phase gates and change history.
 2. Full ER diagram, relational mapping, normalization discussion and data dictionary.
 3. PostgreSQL migrations/custom SQL, triggers, constraints, indexes, query examples and seed data.
-4. Marketplace application, risk worker and reproducible local setup instructions.
+4. Three applications (Admin, Buyer and Seller), their shared backend/database, risk worker and reproducible local setup instructions with each app's entry point.
 5. Dataset generator/export process, provenance manifest, training/evaluation scripts and versioned model metadata.
 6. Results covering concurrency, permissions, failures, model evaluation and backup restoration.
 7. Final report explaining design choices, AI integration, dataset suitability, measured results, limitations and future work.
-8. A demo covering a normal sale, risky listing, administrator decision, concurrent purchase attempt and worker recovery.
+8. A three-application demo covering a seller publication, buyer purchase/chat/report, administrator decision, concurrent purchase attempt and worker recovery.
 
 ## 15. Primary Technical References
 
@@ -418,3 +459,4 @@ Phases are dependency gates, not calendar promises. Re-estimate after the schema
 | --- | --- | --- |
 | 1.0 | 3 November 2026 | Initial marketplace/database scope and Random Forest/scikit-learn training plan |
 | 2.0 | 3 November 2026 | Priorities, proposed Python web stack, unified member roles, revisions, order transitions, durable scans, evidence-backed reviews, corrected dataset claims, expanded schema, measurable acceptance and phased delivery |
+| 2.1 | 3 November 2026 | Three separate Admin/Buyer/Seller applications, shared services/database, explicit role memberships, app-specific login/navigation, cross-app acceptance checks and updated delivery phases |
