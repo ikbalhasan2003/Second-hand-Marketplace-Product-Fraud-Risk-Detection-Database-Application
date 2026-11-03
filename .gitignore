@@ -1,0 +1,30 @@
+# Python environments and generated files
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Local secrets (keep example configuration files)
+.env
+.env.*
+!.env.example
+
+# Test and code-check outputs
+.pytest_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Runtime storage and private datasets
+/media/
+/artifacts/
+/ml/datasets/private/
+*.log
+
+# Operating system files
+.DS_Store
+Thumbs.db
