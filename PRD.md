@@ -1,260 +1,420 @@
 # Second-hand Marketplace & Product Fraud Risk Detection Database Application
 
-Course: Database Application Project Development
-DBMS: PostgreSQL
-AI Module: Custom-trained Random Forest fraud risk classifier
-AI Language: Python
-Language Backend:
-Frontend:
-AI Library: scikit-learn (free and open source)
+**Product Requirements Document - Version 2.0**
 
->
-> Core AI feature: Automated fraud risk classification (satisfies course AI integration requirement)
+**Course:** Database Application Project Development | **Updated:** 3 November 2026
 
-## 1. Project Background & Motivation
+**Status:** Revised project plan; implementation and evaluation are pending.
 
-Second-hand online marketplaces are popular for affordable used goods, but they suffer heavily from fraud: fake products, stolen goods, sellers taking prepayment without shipping, misleading descriptions, duplicate scam postings, fake accounts. Buyers have no simple way to judge trustworthiness before dealing. Manual moderation by admins is slow and cannot keep up with new listings.
+| Area | Project decision |
+| --- | --- |
+| Database | PostgreSQL; relational design, SQL constraints, triggers, indexes and transactions |
+| AI module | A custom-trained fraud risk classifier for product listings |
+| Learning algorithm | Random Forest, selected as the initial algorithm |
+| AI library and language | scikit-learn and Python; free and open source |
+| Proposed backend | Python with Django, using its authentication, ORM and migrations |
+| Proposed frontend | Django templates, Bootstrap and small JavaScript enhancements |
+| Background processing | A Python worker polling a durable PostgreSQL scan-job table |
+| Deployment baseline | One web application, one worker, PostgreSQL and local file storage |
+| External service dependency | No paid AI API, payment gateway or external message broker required |
 
-This project builds a database-centric web platform where **every product and user activity is automatically assessed by an AI risk model**. The database stores all raw transaction data, user behaviour features, AI prediction outputs, reports and audit trails. The system does not fully block listings automatically (to avoid false positives) but generates visible warnings and prioritizes suspicious items for human admin review.
+The web stack is a proposed implementation baseline. PostgreSQL, Random Forest and scikit-learn are the agreed technical choices. Pin supported dependency versions during implementation and record them with each trained model.
 
-### Business & Academic Goals
+> Use scikit-learn to train a Random Forest model on the project's dataset, then load the fitted model to predict risk for new listings. The algorithm is the learning method; scikit-learn is the toolkit; the fitted classifier is the trained AI model.
 
-1. Design a fully normalized relational database (3NF) with ER diagram, DDL, triggers, check constraints, foreign key cascading rules.
-2. Develop a working second-hand marketplace core workflow: user registration, product posting, search, chat, order, report.
-3. Integrate AI fraud classification model that reads structured features from the database, outputs risk score + risk explanation, and writes results back into DB.
-4. Build admin dashboards for risk monitoring, fraud report handling and rule adjustment.
-5. Demonstrate dataset preparation workflow: public fraud datasets + synthetic local marketplace data for model training and validation.
-6. If using an open-source marketplace base: perform schema redesign + add AI risk module, maintain before/after comparison in report.
+## 1. Product Vision and Project Goals
 
-## 2. User Roles, Detailed User Profiles & User Stories
+Build a database-centric second-hand marketplace that helps buyers identify potentially risky listings and helps administrators prioritize evidence-based reviews. Assess listings when published or materially changed, and rescan them when relevant safety evidence changes.
 
-### 2.1 Buyer
+The application supports buying, selling, messaging, order tracking and fraud reporting. AI supplies a risk indicator and observed warning factors. A high score alone never blocks a member, removes a listing or establishes that fraud occurred.
 
-**Profile**: General users looking to buy used phones, laptops, furniture, bikes, books etc.
-Needs: Find cheap goods, avoid scams, communicate with sellers, track orders, report fraud.
-User Stories:
+The academic contribution is an integrated demonstration of relational database design, transactional business rules, reproducible machine learning and accountable moderation.
 
-- As a buyer, I can register an account with email and secure password.
-- As a buyer, I can browse and filter products by category, price, location, condition.
-- As a buyer, I can open a product page and clearly see AI risk level, risk score and warning reason.
-- As a buyer, I can start a chat with the seller to ask questions.
-- As a buyer, I can place an order for an available product.
-- As a buyer, I can submit a fraud report against a product/seller after suspicious interaction, attach notes and screenshots.
-- As a buyer, I can view my order history and the status of my submitted reports.
-- As a buyer, I can update my profile and contact information.
-- As a buyer, I cannot view sensitive admin data or modify risk rules.
+### 1.1 Required Outcomes
 
-### 2.2 Seller
+1. Produce an ER diagram, data dictionary, normalization discussion and executable PostgreSQL migrations/DDL.
+2. Demonstrate registration, listing publication, search, private messaging, order placement and reporting.
+3. Train, evaluate, version and run a Random Forest classifier using scikit-learn.
+4. Preserve listing revisions, prediction history, moderation evidence and order transitions.
+5. Demonstrate concurrent order protection and recovery from a stopped or failed AI worker.
+6. Report measured model performance and dataset limitations without presenting simulated results as real-world fraud accuracy.
 
-**Profile**: Users who want to sell their unused second-hand items. May be genuine casual sellers or malicious scammers.
-User Stories:
+### 1.2 Scope Priorities
 
-- As a seller, I can create and edit my product listing with title, description, category, price, condition and multiple images.
-- As a seller, after submitting a product, the system immediately runs AI risk scanning and shows me the risk result.
-- As a seller, I can reply to incoming chat messages from buyers.
-- As a seller, I can view new orders and update order status (pending, shipped, completed, cancelled).
-- As a seller, I can delete my own active listings.
-- As a seller, if my account gets blocked by admin, I cannot post new products or chat.
-- As a seller, I can view my sales history and previous risk logs of my listings.
+| Priority | Meaning | Features |
+| --- | --- | --- |
+| P0 - required | Complete before the assessed core demonstration | Accounts, listings and revisions, search, polling chat, atomic orders, reports, risk worker, trained model, moderation, versioned rules, audit and evaluation |
+| P1 - extension | Add after P0 acceptance checks pass | Seller appeals, in-app notifications and category-level analytics |
+| P2 - future research | Document as future work | Semantic duplicate detection, image similarity, advanced NLP, external notifications and natural-language analytics |
 
-### 2.3 Platform Administrator
+P1 and P2 work must not delay a complete P0 workflow.
 
-**Profile**: Trusted moderator, manages platform safety, responds to AI alerts and user reports.
-User Stories:
+## 2. Users, Roles and Access
 
-- As admin, I can log into a protected dashboard separated from regular user pages.
-- As admin, I can view a risk summary dashboard: total products, medium-risk count, high-risk count, new fraud reports.
-- As admin, I can filter risk logs by risk level, date range, category.
-- As admin, I can open a high-risk listing, check the AI feature evidence (price anomaly, keyword flag, seller history).
-- As admin, I can view all fraud reports submitted by buyers, assign status: Pending, Under Review, Resolved, Dismissed.
-- As admin, I can block or unblock a user account, remove fraudulent product posts.
-- As admin, every moderation action is saved automatically to audit log with admin ID and timestamp.
-- As admin, I can adjust threshold values in risk rules table (e.g., change price deviation percentage that triggers medium risk).
-- As admin, I can export fraud dataset CSV for model retraining.
+Buyer and seller are capabilities of the same member account. Registration does not force users into an exclusive buying or selling role.
 
-### 2.4 Data Analyst (Optional role for project demo)
+| Actor | Allowed actions | Access boundary |
+| --- | --- | --- |
+| Visitor | Browse visible listings and their public risk summaries | Cannot order, message or submit reports |
+| Active member as buyer | Search, contact sellers, place orders, confirm receipt, report concerns and view own history | Cannot buy own listing or access another member's orders/evidence |
+| Active member as seller | Publish/edit own listings, manage eligible orders and view risk history for own listings | Cannot change scores, verdicts or another seller's listings |
+| Administrator | Review cases, moderate accounts/listings, publish rules, manage model activation and export approved training data | Every privileged change requires a recorded actor and reason |
+| Blocked member | Read own history and moderation notices; submit evidence or an appeal where supported | Cannot publish, purchase or send chat messages |
 
-**Profile**: Works to improve the AI fraud model.
-User Stories:
+Administrator privileges are provisioned through a trusted management command or existing administrator. Public registration and profile updates must never assign an administrator role. An analyst role is deferred; P0 dataset exports are administrator-only.
 
-- As analyst, I can export labelled fraud records (product features + final admin verdict: scam / legitimate).
-- As analyst, I can view statistical charts: fraud distribution by product category, scam rate by user registration age.
-- As analyst, I can test new model versions locally and import prediction results back into risk_logs table for comparison.
+## 3. Product Experience and Functional Requirements
 
-## 3. Functional Requirements (Expanded)
+### 3.1 Accounts and Profiles
 
-### 3.1 Authentication & User Management Module
+- **AUTH-01:** Register using a unique, case-insensitive email, full name and password. Store only a framework-managed password hash; configure a bcrypt-backed Django hasher and password validation.
+- **AUTH-02:** Support login, logout, password change and server-side session invalidation. Use session cookies and CSRF protection for browser actions.
+- **AUTH-03:** Enforce ownership, role and account status on the server for every protected action, including direct requests to an object's URL.
+- **AUTH-04:** Support `active`, `blocked` and `deactivated` account status. Deactivation is a soft action and preserves orders, reports, reviews and audit history.
+- **AUTH-05:** Show public profile information and account age. Keep email, contact details and private evidence outside public profiles and dataset exports.
 
-- Registration: email, hashed password, user type selection (buyer / seller), full name, location, contact.
-- Login / Logout, session management.
-- Password change.
-- User status enum: `active`, `blocked`. Blocked users cannot create products, send messages or place orders.
-- Soft delete support for users (keep historical transaction and fraud data, do not hard delete).
-- Constraint: one email address cannot register multiple accounts.
+### 3.2 Listing Creation, Revisions and Search
 
-### 3.2 Product Catalog Module
+- **LIST-01:** A listing contains title, description, category, condition, positive price, optional original price, location and zero to six images. Use one configured currency for the demonstration and display it explicitly.
+- **LIST-02:** Use conditions `like_new`, `good`, `fair` and `poor`. Explain missing photos as limited listing evidence, not proof of fraud.
+- **LIST-03:** Separate availability (`draft`, `available`, `reserved`, `sold`) from visibility (`visible`, `removed_by_seller`, `removed_by_admin`). A hidden listing must never become publicly available through an order-state change.
+- **LIST-04:** Save content and image changes as a new immutable revision. Publication/material edits atomically associate images, advance the current revision and queue a scan. Material changes include price, text, category, condition, location and images. Draft-only saves do not require scans.
+- **LIST-05:** Keep the seller identity immutable. Prevent material edits while a nonterminal order exists and after a completed sale. History pages reference the revision that existed when the order/report was created.
+- **LIST-06:** Use soft removal. Sellers can withdraw their own available listings; active orders require cancellation or dispute resolution first. Administrators can hide listings while retaining the order and evidence history.
+- **LIST-07:** Provide PostgreSQL full-text search over current title/description, with category, price, condition, location and current risk filters. Paginate results and use a stable secondary sort key.
+- **LIST-08:** Show a risk badge, scan time and caution text on listing details. A filter for low risk includes only listings with a current completed low-risk assessment. Include a separate unassessed filter.
 
-- Product fields: title, description, category_id, price, original_price (optional), product_condition (new-like, good, fair, poor), location, is_available.
-- Multiple image support: one product → many image records (store image path in DB; actual image file in local storage).
-- Search: full text search on title and description; filters: category, min price, max price, risk level.
-- Product status: available, sold, removed_by_admin, removed_by_seller.
-- Trigger: On product INSERT or UPDATE → automatically call AI risk prediction service and insert record into `risk_logs`.
+### 3.3 Private Messaging
 
-### 3.3 Chat & Messaging Module
+- **CHAT-01:** Create one conversation per product and interested buyer; derive the seller from the product. Prevent self-conversations.
+- **CHAT-02:** Only those two participants may load the conversation or send messages. Restrict read receipts to the receiving participant.
+- **CHAT-03:** Load messages through paginated polling, with a proposed five-second refresh interval. Preserve text and timestamps; escape user content on display.
+- **CHAT-04:** Require active accounts to send, limit message length and apply configurable message-rate limits. Blocked members retain access to their existing history.
 
-- 1-to-1 private chat between a buyer and seller.
-- Each message: sender_id, receiver_id, message text, sent_time, is_read flag.
-- Load conversation history between two users.
-- Optional simple keyword scan (basic rule filter; heavy NLP is out of scope).
+Real-time WebSockets and automated reading of private chats by the fraud model are outside P0.
 
-### 3.4 Transaction / Order Module
+### 3.4 Orders and Disputes
 
-- Order created when buyer confirms purchase.
-- Order fields: product_id, buyer_id, seller_id, order_time, order_status.
-- Order status enum: `pending_payment`, `shipped`, `completed`, `cancelled`, `disputed`.
-- One product can only have one active order at a time (constraint to prevent multiple buyers).
-- Transaction record links to product, buyer, seller for later fraud analysis.
+Orders represent purchase agreements and fulfilment status. Payment and refunds occur outside this application; no screen claims that payment was verified or funds are held.
 
-### 3.5 AI Fraud Risk Detection Module (Core)
+| Current order state | Allowed next state | Responsible actor |
+| --- | --- | --- |
+| `placed` | `accepted`, `cancelled`, `disputed` | Seller accepts; buyer/seller may cancel; either participant may raise a dispute |
+| `accepted` | `shipped`, `completed`, `cancelled`, `disputed` | Seller ships; buyer confirms an in-person handover; either participant may cancel or dispute |
+| `shipped` | `completed`, `disputed` | Buyer confirms receipt or raises a dispute; seller may also raise a dispute |
+| `disputed` | `completed`, `cancelled` | Administrator resolves with a reason and supporting evidence |
+| `completed` or `cancelled` | None | Terminal; later concerns can still be reported |
 
-#### Input Features extracted from database
+- **ORDER-01:** Place an order in a single transaction: lock the product row, verify visible/available status and active participants, reject self-purchase, create the order and history event, and mark the product reserved.
+- **ORDER-02:** Retain the ordered `(product_id, revision_no)` so price and description are immutable purchase facts. Derive the seller from the product instead of accepting a seller ID from the client.
+- **ORDER-03:** Enforce one non-cancelled order per product using a partial unique index. This also prevents a second sale after completion. An order-placement idempotency key is unique per buyer; reuse with different request data returns a conflict.
+- **ORDER-04:** Apply all transitions under row locks, validate the actor and current state, and append an order-history record atomically. Repeating an already-applied action must not create another transition.
+- **ORDER-05:** Cancellation releases the reservation. Public ordering still requires visible status, an active seller and no completed sale. Completion marks the product sold. Neither action overrides administrator removal.
+- **ORDER-06:** Expire an unanswered `placed` order after a configurable period, initially 48 hours, using an idempotent scheduled command. Never auto-cancel accepted, shipped or disputed orders.
+- **ORDER-07:** Existing order fulfilment, cancellation and evidence handling remain accessible to the appropriate participants after an account is blocked; blocking must not erase their transaction obligations.
 
-1. Price ratio: listing price vs average market price of same category
-2. Suspicious keyword count in description (predefined scam keyword list)
-3. Seller historical features: total previous reports, number of high-risk posts, account age, posting frequency
-4. Image count (0 images or too many copied images is a signal)
-5. Location mismatch signal
-6. Recent duplicate postings by same user
+### 3.5 Fraud Reports and Moderation
 
-#### Algorithm, Library and Trained Model
+- **REPORT-01:** A signed-in member can report a listing using a reason category, description and up to three private evidence attachments. Self-reports are rejected. An optional order reference must belong to the reporter and target product; an order-linked report targets the purchased revision, otherwise it targets the current revision.
+- **REPORT-02:** Maintain report statuses `pending`, `reviewing`, `resolved` and `dismissed`, with administrator assignment and timestamped transition audit events.
+- **REPORT-03:** Allow the reporter to see their case status and public-facing outcome. Evidence is accessible only to that reporter and authorized administrators; it is not automatically disclosed to the reported seller.
+- **REPORT-04:** A review records the target revision, reviewer, reason, evidence summary and verdict: `fraud`, `legitimate` or `unresolved`. Neither a dismissed report nor the absence of reports establishes legitimacy.
+- **REPORT-05:** Maintain one authoritative, append-only decision chain per listing revision, even when several reports concern it. A correction references its immediate predecessor; serialize changes to prevent competing branches. Select the latest effective decision first, then export only if it is evidence-backed `fraud` or `legitimate`. A newer `unresolved` decision excludes the record rather than reviving an earlier label. Preserve source and decision time.
+- **ADMIN-01:** Provide a queue combining open reports and current high-risk listings. Deduplicate by listing while showing case counts; prioritize high risk and oldest waiting cases without treating an AI alert as a confirmed report.
+- **ADMIN-02:** Blocking/unblocking, listing removal/restoration, report transitions, verdicts, model activation, rule publication and exports require an audit event in the same transaction as the action.
+- **ADMIN-03:** Changes to a seller's confirmed history queue fresh assessments of affected available listings. Bulk work must be batched and recoverable.
 
-- **Algorithm:** Random Forest, the machine-learning method used to learn patterns from labelled marketplace records.
-- **Library:** scikit-learn, the Python toolkit used to train, evaluate, save and run the classifier.
-- **Trained AI model:** The fitted Random Forest classifier produced by training on the project's dataset. This trained model predicts fraud risk for new listings; it is not a pretrained marketplace fraud model.
-- Random Forest is the selected starting algorithm. Its suitability must be demonstrated through validation rather than assumed to be the best-performing option.
+### 3.6 Optional Extensions
 
-#### Model Training (Offline)
+- **APPEAL-01 (P1):** A seller can appeal a moderation decision with a reason. One open appeal is allowed per decision; an administrator other than the original reviewer handles it where staffing permits. An upheld or corrected outcome is audited.
+- **NOTICE-01 (P1):** Store in-app notices for order changes, report outcomes and completed scans. Notices contain summaries and access-controlled links, not private evidence. Delivery is deduplicated by source event.
+- **ANALYTICS-01 (P1):** Show category-level risk counts, confirmed-label counts, review waiting time and model evaluation summaries. Clearly separate predictions from confirmed review outcomes.
 
-1. Prepare labelled records with structured listing and seller features. Use `legitimate` and `fraud` as target labels; exclude unresolved records from supervised training.
-2. Use only information available at prediction time. Do not use the listing's later reports, final admin verdict or previous AI score as input features.
-3. Separate training, validation and test data before fitting preprocessing or the classifier. Keep duplicate listings and related scenario variants in the same partition.
-4. Train a scikit-learn `RandomForestClassifier` using Python. Handle class imbalance using training-data class weights where appropriate.
-5. Evaluate fraud precision, recall, F1-score, average precision and the confusion matrix. Compare against a simple rule-based baseline; report synthetic-data and real-data results separately when available.
-6. Save the fitted preprocessing and classifier together with their feature definitions, model version and dependency versions so the application can reproduce inference.
+## 4. AI Model and Feature Contract
 
-#### Model Prediction (Application Runtime)
+### 4.1 Model Selection and Limits
 
-1. Fetch structured features from PostgreSQL
-2. Load the saved preprocessing and trained Random Forest classifier using scikit-learn, apply the same feature definitions used during training, and predict the fraud-class score.
-3. Convert the fraud-class score to a 0–100 risk score and assign a risk level. Store observed warning factors separately from model explanations; rule-based warnings must not be presented as proof of why an individual model prediction occurred. The score is a risk indicator, not a verified real-world fraud probability without representative validation and calibration.
-4. Write prediction result into `risk_logs` table, linked to product_id
-5. Initial configurable business thresholds (to be evaluated on validation data):
-   - Low Risk: 0–39 → Green label, normal display
-   - Medium Risk: 40–74 → Orange warning label + notice for buyer caution
-   - High Risk: 75–100 → Red strong warning, auto push to admin alert queue
+Train a scikit-learn `RandomForestClassifier` on structured features. Compare it with a transparent rules baseline and Logistic Regression on the same evaluation partitions. Random Forest is the initial selection, not a claim of best performance.
 
->
-> Important: AI is an assistant, not final judge. Admin’s manual review is ground truth. Admin final verdict can be stored for future model retraining.
+The model assesses listing risk. It does not verify identity, detect stolen goods directly, inspect image authenticity or determine whether external payment/shipping occurred.
 
-### 3.6 Fraud Report Module
+### 4.2 Initial Feature Definitions
 
-- Buyer creates fraud report: product_id, comment, attachment file path, report_time.
-- Report status: pending, reviewing, resolved, dismissed.
-- Link report to admin review log.
-- After admin resolves, admin can mark the listing as confirmed fraud; this labelled data becomes training data.
+| Feature | Definition at assessment time | Missing-data or interpretation rule |
+| --- | --- | --- |
+| Price ratio | Current listing price divided by the median of earlier comparable listings in the same category and condition, excluding the target product | Record comparable count and a missing-baseline flag; use a documented fitted imputation policy when fewer than 15 comparables exist |
+| Keyword count | Count distinct matches from a versioned suspicious-phrase list in title/description | Match rules belong to the feature schema; legitimate context can contain the same words |
+| Seller account age | Days between registration and `feature_as_of` | A new account is a contextual signal, not a fraud finding |
+| Prior confirmed fraud count | Number of the seller's other listings with an eligible fraud verdict known before `feature_as_of` | Exclude the current target and all later outcomes; distinguish this from unverified report volume |
+| Posting frequency | Seller listing publications within the preceding seven days | Exclude future posts; define whether the target publication is included consistently |
+| Image count | Images attached to the assessed revision | Does not establish whether images were copied or stolen |
+| Location difference | Listing location differs from the seller's self-declared profile location at assessment | Treat missing values explicitly; travel or relocation can explain a difference |
+| Duplicate-text count | Earlier postings by the same seller with the same normalized text fingerprint in a defined 30-day window | Exclude the target product and its own revisions; does not prove fraud |
 
-### 3.7 Admin Audit & Risk Rule Module
+All feature windows, keyword rules, imputation and normalization are versioned. Retain the seller profile location and aggregate reference values used in each scan's feature evidence. Initial inputs exclude prior AI scores, counts of AI-flagged listings, account-block decisions and the target's final verdict to avoid circular learning.
 
-- `admin_audit_logs`: admin_id, action_type, target_user_id / target_product_id, action_details, timestamp.
-Action types example: block user, unblock user, delete product, dismiss report.
-- `risk_rules`: store configurable threshold values (price deviation threshold, report count threshold etc.) so admin can tune without changing AI code.
+### 4.3 Training and Reproducibility
 
-## 4. Full Database Schema Details (10 Tables, 3NF)
+1. Create a versioned dataset export and data dictionary. Separate identifiers, provenance and labels from predictor columns.
+2. Split records before fitting preprocessing, tuning parameters, applying resampling or selecting thresholds. Use fixed random seeds and keep final test data untouched until evaluation.
+3. Fit preprocessing and the classifier as one saved pipeline. Train class weights on training data only when class imbalance requires them.
+4. Record sample counts, class prevalence, fraud precision, recall, F1, average precision, confusion matrix and false-positive examples. Report variation across appropriate validation folds when feasible.
+5. Compare model and baselines on identical partitions. Report results separately by synthetic/real source and important category; include sample counts so small slices are not overstated.
+6. Register the artifact checksum/path, feature schema, dataset/generator version, seed, dependencies, class mapping and evaluation results. Freeze registered artifact contents and version metadata; corrections require a new version. Only load artifacts produced by the trusted project training process.
+7. An administrator explicitly activates a tested model. Keep the previous version for rollback; do not automatically retrain or activate from newly submitted reports.
 
-1. `users` (user_id PK, email, password_hash, full_name, user_type, location, contact, status, created_at)
-2. `categories` (category_id PK, category_name, description)
-3. `products` (product_id PK, seller_id FK, category_id FK, title, description, price, original_price, product_condition, location, status, created_at, updated_at)
-4. `product_images` (image_id PK, product_id FK, image_path, uploaded_at)
-5. `chat_messages` (msg_id PK, sender_id FK, receiver_id FK, message_text, sent_at, is_read)
-6. `transactions` (transaction_id PK, product_id FK, buyer_id FK, seller_id FK, order_status, created_at)
-7. `risk_logs` (risk_id PK, product_id FK, risk_score, risk_level, risk_factors, predicted_at, admin_verdict: null / legitimate / fraud)
-8. `fraud_reports` (report_id PK, product_id FK, buyer_id FK, report_comment, file_path, report_status, created_at, reviewed_by FK admin_id, reviewed_at)
-9. `admin_audit_logs` (audit_id PK, admin_id FK, action_type, target_id, target_type, note, action_time)
-10. `risk_rules` (rule_id PK, rule_name, threshold_value, description, updated_by, updated_at)
+Standard Random Forest retraining is a new offline fit using a reviewed dataset version. New verdicts do not incrementally modify the running model in place.
 
-Constraints:
+### 4.4 Risk Output and Explanation
 
-- Foreign keys with ON DELETE actions carefully defined
-- CHECK constraints for risk score between 0 and 100
-- ENUM constraints for status fields
-- NOT NULL on critical fields
-- Indexes: product search index, risk_level index, user email unique index
+Identify the fraud class using the saved class mapping, calculate `risk_score = round(100 * fraud_class_score)` and validate the result is between 0 and 100. This is a risk indicator, not a verified percentage chance of real-world fraud.
 
-## 5. Dataset Section (Extended)
+| Score under initial rules | Display | Product behaviour |
+| --- | --- | --- |
+| 0-39 | Low risk, with text and green styling | Normal visibility; never promise safety |
+| 40-74 | Medium risk, with text and orange styling | Show caution and observed warning factors |
+| 75-100 | High risk, with text and red styling | Show strong caution and prioritize administrator review |
 
-### Dataset Sources
+Thresholds are versioned operating choices. Validate `0 <= medium_min < high_min <= 100`, tune on validation data and preserve the ruleset used for every prediction. Probability calibration may be evaluated on held-out data; calibration on synthetic records does not establish real-world calibration.
 
-1. **BBB Scam Tracker Dataset**: Free public dataset from Better Business Bureau. Contains real scam reports: scam type, victim location, scam description, reported date. Useful to extract scam keywords and fraud patterns.
-2. **eBay Auction Fraud Dataset**: Open academic dataset for online auction fraud, includes fake bidding, non-delivery fraud patterns.
+Store observed factors such as an unusual price ratio separately from model explanations. Global feature importance describes the model overall and must not be presented as the exact cause of an individual score. Do not generate unsupported claims such as "this seller is a scammer."
 
-### Limitations
+## 5. Reliable Scanning and Failure Handling
 
-These datasets are not directly compatible with our table schema. They do not contain clean second-hand product price, seller account age, local product category data.
+```mermaid
+flowchart LR
+    A[Publish listing transaction] --> B[Immutable revision and images]
+    B --> C[PostgreSQL trigger]
+    C --> D[Durable scan job]
+    D --> E[Python worker after commit]
+    E --> F[Versioned features and Random Forest]
+    F --> G[Append-only risk log]
+    G --> H[Current risk badge and review queue]
+```
 
-### Dataset Preparation Workflow
+- **SCAN-01:** Database triggers perform local queue writes only. Do not make synchronous Python, training or HTTP calls from a trigger. Publication succeeds while the worker is offline; a queue-write failure rolls back publication rather than silently losing its scan.
+- **SCAN-02:** Each runnable job pins product/revision, context version, model and ruleset. If configuration is unavailable, retain a queued unbound job and show pending assessment. Model and ruleset IDs must be either both null or both bound; bind them atomically before processing. Deduplicate unbound jobs by revision/context and bound jobs by revision/context/model/ruleset. If binding finds an existing matching bound job, supersede/coalesce the unbound work safely. New evidence, explicit rescans and scheduled refreshes advance context version.
+- **SCAN-03:** Claim jobs using a short transaction and row locking such as `FOR UPDATE SKIP LOCKED`, assigning a new claim token. After version binding, persist a consistent feature snapshot and `feature_as_of` before inference. Retries reuse that snapshot, schema and model so the job remains reproducible.
+- **SCAN-04:** Use job states `queued`, `processing`, `succeeded`, `failed` and `superseded`, with attempt count, retry time, lease expiry, claim token and sanitized error details. Reclaim expired leases after a crash; retry transient failures with bounded backoff, initially up to three attempts. Only the current lease holder may persist features, renew, finalize or record failure; reject writes from an expired/replaced claim.
+- **SCAN-05:** Under a row lock and current-claim check, completion writes one result per job and finalizes the job atomically. At-least-once execution must not create duplicate prediction records or admin alerts.
+- **SCAN-06:** A result is current only when its revision, context, active model and active ruleset match and its feature snapshot is within the configurable maximum assessment age, initially 24 hours. An older result stays in history and cannot replace the current assessment. Expired, retired-model and old-rule results are stale even if a scheduler is offline.
+- **SCAN-07:** Derive UI states `pending`, `scanning`, `ready`, `failed` or `stale`. No model, timeout or failed scan may produce a zero score or a low-risk badge. Listings remain visible with an explicit unassessed warning.
+- **SCAN-08:** Risk-log writes do not queue new scans. Ruleset publication, model activation/rollback and confirmed seller-evidence changes schedule bounded batches of rescans for affected available listings.
+- **SCAN-09:** A refresh initially runs daily for available listings so account age, reference prices and rolling-window features are reassessed. A stable listing/date event key and transactional uniqueness ensure a repeated run does not advance context or create work twice for that scheduled event.
 
-1. Load public datasets and extract fraud pattern rules, scam keywords.
-2. Generate synthetic dataset using Python: synthetic buyers, sellers, product listings, normal listings and labelled fraud listings.
-3. Combine public fraud pattern knowledge + synthetic structured records.
-4. Split: Train set (70%), Validation (15%), Test set (15%).
-5. After deployment, admin’s manual verdicts (`admin_verdict` column in risk_logs) will grow our labelled dataset continuously for incremental retraining.
+## 6. Dataset Strategy and Research Evidence
 
-## 6. Non-Functional Requirements (Expanded)
+### 6.1 Sources and Appropriate Use
 
-1. **Normalization**: Schema strictly follow 3NF, eliminate update anomaly, insertion anomaly, deletion anomaly. ER diagram must show all entities, attributes, relationships, cardinality.
-2. **Data Integrity**: Primary key, foreign key, check, unique, not null constraints implemented in DDL.
-3. **Performance**: Index on frequently queried fields (product title, risk_level, user_id). For course scale, data volume is small.
-4. **Security**: Password never stored plaintext; use bcrypt hash. Admin routes protected by authorization check. Blocked user access control.
-5. **Maintainability**: Loose coupling: database layer, marketplace business layer, AI prediction layer separated. AI model logic is separate from SQL queries.
-6. **Explainability**: AI output stores risk factors, not just a score. The report needs to explain why a listing got high risk. This is good for your course presentation.
-7. **Backup**: Important tables (transactions, fraud_reports, risk_logs, audit_logs) should not be truncated easily.
-8. **Usability**: Risk warning is prominent on UI; admin dashboard prioritizes high-risk alerts at top.
+| Source | Intended use | Constraint |
+| --- | --- | --- |
+| Project-generated marketplace records | Primary prototype dataset matching the feature contract | Synthetic labels demonstrate simulated scenarios, not proven real-world effectiveness |
+| Evidence-backed project reviews, when available | Later evaluation and supervised retraining | Require a traceable reason and eligible resolved label; uncertain cases remain unresolved |
+| [UCI Shill Bidding](https://archive.ics.uci.edu/dataset/562/shill+bidding+dataset) | Separate fraud-classification benchmark and research reference | Researcher-collected eBay auction data with 6,321 records, CC BY 4.0; labels concern bidding manipulation and do not directly match a fixed-price listing model |
+| [BBB Scam Tracker](https://www.bbb.org/scamtracker) | Research scam patterns and warning language | Public search access does not establish a free, openly licensed bulk training download; delivery must not depend on obtaining one |
 
-## 7. Out of Scope (Clear boundary for report)
+Do not describe Shill Bidding as an official eBay-published dataset or as verified non-delivery training data. Do not merge unrelated datasets by inventing missing seller histories or treating all reported cases as confirmed fraud.
 
-- Real payment gateway, actual money transfer
-- SMS/email notification service
-- Real image recognition / deep image fake detection
-- Mobile native application
-- Advanced vector search / RAG chatbot
-- Live chat video
-- Large scale production load handling
-- Third-party identity verification (NID verification)
+### 6.2 Dataset Construction
 
-## 8. Risk & Limitation of the System (For your discussion chapter)
+- **DATA-01:** Target an initial 5,000-10,000 synthetic listing records spanning at least five categories, varied sellers and timestamped activity. These are development targets, not an accuracy guarantee.
+- **DATA-02:** Generate coherent user, listing, order and review timelines. Include legitimate cheap/damaged goods, new genuine sellers, suspicious normal-price listings and fraudulent scenarios with polished descriptions.
+- **DATA-03:** Avoid labels defined solely by one feature threshold. Document scenario assumptions and keep independently authored challenge scenarios outside generator development.
+- **DATA-04:** Record `record_id`, product/revision, seller grouping key, feature timestamp, feature schema, label, label source, decision time, source type, generator/template version and synthetic flag. Remove direct personal data from training exports.
+- **DATA-05:** Target approximately 70% training, 15% validation and 15% test for the prototype. Assign seller groups and scenario-template families to partitions before generation so reused templates do not connect the entire dataset. Keep duplicates and related variants together; document deviations from exact percentages required by grouping.
+- **DATA-06:** For real temporal evaluation, hold out later records and rebuild aggregates using only preceding information. Document seller overlap separately and add an unseen-seller evaluation when enough data exists.
+- **DATA-07:** Do not label unresolved records as legitimate or infer fraud from low prices alone. A review correction replaces or removes the earlier training label in the next dataset version according to REPORT-05. Historical seller features resolve the decision chain as known at `feature_as_of`, without using later corrections.
+- **DATA-08:** Preserve source attribution, license/access notes, generator seed, dataset checksum and split manifest. Public-data experiments remain distinguishable from the project's own dataset.
 
-1. **False Positive**: Genuine cheap second-hand goods may be flagged medium/high risk automatically. Admin review is mandatory to reduce this issue.
-2. **False Negative**: Sophisticated scammers can avoid keyword and price rules, AI may miss their fraud.
-3. **Dataset bias**: Synthetic data may not fully represent real-world scam variety.
-4. **Limited AI**: The model only uses structured tabular features; no deep text embedding in this version (you can mention this as future improvement).
+### 6.3 Claims Supported by the Evaluation
 
-## 9. Acceptance Criteria (Detailed)
+Synthetic-only results support the claim "a working fraud risk screening prototype evaluated on simulated marketplace scenarios." Real-world accuracy claims require representative real outcomes evaluated separately. Record false positives, unknown outcomes and domain mismatch in the final report. Do not promise an unmeasured target such as 95% accuracy.
 
-1. ER diagram drawn, all entities and relationships correctly shown.
-2. All DDL scripts execute successfully on PostgreSQL, constraints work.
-3. User registration, login, product post, chat, order workflow works.
-4. After product saved, AI risk prediction triggers automatically and record saved to `risk_logs`.
-5. Buyer can view risk level and warning message on product page.
-6. Buyer can submit fraud report.
-7. Admin can view alert dashboard, filter risk logs, change report status, block users.
-8. Every admin moderation action appears in audit log.
-9. Dataset loading, Random Forest training and evaluation code can run separately. The application can load the saved scikit-learn preprocessing and classifier to predict risk for new listings, with model version and evaluation results documented.
-10. Final report includes: schema design, AI integration part, dataset discussion, testing result, limitation, future work.
+## 7. Database Design and Integrity Plan
 
-## 10. Future Enhancement Ideas (for report conclusion)
+### 7.1 Planned Domain Tables
 
-- Add text embedding / semantic search to detect copied scam descriptions.
-- Integrate Text2SQL so admin can query fraud database with natural language.
-- Add image duplicate detection to find stolen product photos.
-- Add email notification for new high-risk alerts.
-- Deploy simple analytics dashboard with charts.
+The plan expands the original ten-table sketch into 18 P0 domain tables and two optional P1 tables. Django-managed session/permission tables are additional infrastructure and are not counted below. Final column types and SQL names belong in the data dictionary and migrations.
+
+| # | Table | Key fields and purpose | Priority |
+| --- | --- | --- | --- |
+| 1 | `users` | PK user_id; email, password_hash, full_name, platform_role, location, private contact, status, created_at, deactivated_at | P0 |
+| 2 | `categories` | PK category_id; unique name, description, is_active | P0 |
+| 3 | `products` | PK product_id; seller_id FK, current_revision_no, availability, visibility, context_version, created_at, updated_at | P0 |
+| 4 | `product_revisions` | Composite PK (product_id FK to products, revision_no); category_id FK, title, description, price, optional original_price, currency, condition, location, text_fingerprint, created_at | P0 |
+| 5 | `product_images` | PK image_id; revision composite FK, storage_key, sort_order, content_type, byte_size, uploaded_at | P0 |
+| 6 | `conversations` | PK conversation_id; product_id FK, buyer_id FK, created_at; unique (product_id, buyer_id) | P0 |
+| 7 | `chat_messages` | PK message_id; conversation_id FK, sender_id FK, message_text, sent_at, read_at | P0 |
+| 8 | `transactions` | PK transaction_id; revision composite FK, buyer_id FK, status, request_key, request_fingerprint, created_at, updated_at | P0 |
+| 9 | `order_status_history` | PK event_id; transaction_id FK, from_status, to_status, actor_id FK or system actor, reason, occurred_at | P0 |
+| 10 | `risk_models` | PK model_id; unique version, artifact path/checksum, feature_schema_version, dataset_version, seed, class mapping, dependency manifest, metrics, activation state | P0 |
+| 11 | `risk_rulesets` | PK ruleset_id; unique version, draft/active/retired state, created_by FK, published_by FK, timestamps | P0 |
+| 12 | `risk_rules` | PK rule_id; ruleset_id FK, rule_key, numeric threshold, description; unique (ruleset_id, rule_key) | P0 |
+| 13 | `risk_scan_jobs` | PK job_id; revision composite FK, context_version, model_id/ruleset_id FKs (nullable only while unbound), optional unique source_event_key, status, attempts, claim_token, retry/lease times, feature_as_of, feature_snapshot, error code | P0 |
+| 14 | `risk_logs` | PK risk_id; unique job_id FK, risk_score, risk_level, observed_factors, optional model_explanation, predicted_at | P0 |
+| 15 | `fraud_reports` | PK report_id; revision composite FK, reporter_id FK, optional transaction_id FK, reason_code, comment, status, assigned_admin_id FK, created_at, resolved_at | P0 |
+| 16 | `report_attachments` | PK attachment_id; report_id FK, private storage_key, content_type, byte_size, uploaded_at | P0 |
+| 17 | `moderation_reviews` | PK review_id; revision composite FK, optional report_id FK, reviewer_id FK, verdict, reason, evidence_summary, supersedes_review_id FK, reviewed_at | P0 |
+| 18 | `admin_audit_logs` | PK audit_id; admin_id FK, action_type, typed target FKs for user/product/report/review/model/ruleset, reason, before/after change record, occurred_at | P0 |
+| 19 | `seller_appeals` | PK appeal_id; review_id FK, seller_id FK, reason, status, assigned_admin_id FK, outcome, timestamps | P1 |
+| 20 | `notifications` | PK notification_id; recipient_id FK, unique recipient/event key, summary, authorized destination reference, created_at, read_at | P1 |
+
+### 7.2 Normalization and Historical Facts
+
+Keep core operational relations in 3NF and document functional dependencies. Current product content lives in its immutable revision rather than being repeated in `products`. Orders, reports and reviews reference the appropriate revision. Seller identity is derived through the product and is not independently editable on an order.
+
+Feature snapshots, prediction outputs and audit before/after records are intentional historical evidence. Document these bounded snapshots separately from normalization of operational facts; do not claim that arbitrary JSON automatically satisfies relational normalization. Never use a snapshot as the authoritative editable user profile or product record.
+
+### 7.3 Required Database Guarantees
+
+- Unique normalized email and category name; positive `NUMERIC` price; nonnegative optional original price; bounded risk score; constrained status values; UTC-aware timestamps.
+- A composite foreign key from `(products.product_id, current_revision_no)` to `product_revisions` ensures the current revision belongs to that product. Use a deferrable constraint so product/revision creation commits atomically.
+- Composite revision foreign keys protect orders, jobs, images, reports and reviews. An order-linked report matches its purchased revision; a review's optional report matches the same target revision. Enforce reporter/order ownership and correction-chain target consistency.
+- Permit one root moderation decision per revision and one successor per predecessor, enforced through uniqueness, chronology and target validation. Create decisions under a product lock so concurrent reviews cannot branch the canonical chain.
+- A partial unique index on `transactions(product_id)` where status is not `cancelled` enforces the one-sale rule. Use `(buyer_id, request_key)` uniqueness for idempotency.
+- Enforce bound and unbound job deduplication as specified in SCAN-02, and unique `risk_logs.job_id`. Only one model and one ruleset may be active at a time, using partial unique indexes.
+- Published ruleset contents and registered model artifacts/version metadata are immutable. Activation state may change with an audit event; threshold or artifact changes require a new version. Feature-schema changes require retraining, not an untracked rules edit.
+- Database transition/validation triggers protect order states, immutable ownership and saved revisions from invalid direct SQL changes. Application authorization remains mandatory.
+- Job-creation triggers watch publication, current revision and assessment-context changes. Ignore draft-only saves, unrelated edits and worker result writes.
+- Revisions, their image associations/referenced file contents, prediction results, moderation decisions, order events and audit events are immutable to ordinary application updates. Create new revisions/files for changes; never overwrite historical media. Use `RESTRICT`/`NO ACTION` on retained historical entities; no user/product cascade may erase evidence.
+- If `CASCADE` is used for a disposable draft-only child, justify it in the data dictionary. Orphaned file cleanup is a separate controlled task after reference checks.
+
+### 7.4 Queries, Indexes and SQL Deliverables
+
+Provide a GIN full-text index for revision title/description and B-tree indexes for product filters, conversation pagination, report queues, seller history and queued-job lookup. Index foreign-key lookup paths used by these queries.
+
+Create documented views such as `current_listing_risk`, `admin_review_queue` and `seller_order_history`. Current risk uses revision/context/model/ruleset matching rather than the latest timestamp alone. Include `EXPLAIN ANALYZE` examples for search and queue queries on a seeded database.
+
+Deliver ERD cardinalities, the data dictionary, migrations, custom trigger SQL, deterministic seeds and representative SQL queries. Examples must run against the implemented schema.
+
+## 8. Application Boundaries and Key Screens
+
+Separate marketplace services, query/data access, feature extraction, inference and offline training. The web process and worker share versioned feature code; neither trains a model during a user request.
+
+| Screen or operation | Required behaviour |
+| --- | --- |
+| Browse/search | Paginated visible listings, explicit currency and current/unknown risk filters |
+| Listing details | Seller summary, assessed revision/time, risk state, warning factors and report/contact/order actions |
+| Seller workspace | Drafts, listing status, scan progress, own risk history and order actions |
+| Conversation | Participant-scoped history and polling updates |
+| Orders | Buyer/seller actions derived from the allowed state transitions |
+| Report form/history | Revision reference, private evidence upload and reporter-visible outcome |
+| Administrator dashboard | Deduplicated review queue, evidence, moderation reasons, worker failures and audit lookup |
+| Model/rule management | Version history, evaluation summary, explicit activation/publication and rollback |
+
+Use browser forms/session requests for P0; define JSON endpoints where polling requires them. Mutations use authenticated, CSRF-protected POST requests. Reuse of a valid idempotency key returns the original result; invalid transitions return a clear conflict rather than silently overwriting state.
+
+## 9. Security, Privacy and Reliability Requirements
+
+- **NFR-01 - Access:** Validate ownership and role server-side. Test private message, order, report and attachment access with unrelated users and blocked accounts.
+- **NFR-02 - Inputs:** Use parameterized queries/ORM operations, escaped templates, field validation and upload limits. Do not render user HTML or accept client-supplied actor/role fields as authority.
+- **NFR-03 - Files:** Initially accept JPEG/PNG/WebP images up to 5 MB each, at most six listing images and three report images. Verify decoded type and dimensions, reject executable/SVG uploads, generate storage names and serve private evidence through authorization checks.
+- **NFR-04 - Sessions:** Use secure cookies and HTTPS when deployed, CSRF protection, password validators and login throttling. Configure/test message, listing and report rate limits. Authentication failures must not reveal whether an email exists.
+- **NFR-05 - Secrets:** Keep database passwords, session secrets and administrative credentials out of Git and dataset exports. Provide an example environment file with placeholders when implementation begins.
+- **NFR-06 - Audit:** The application role cannot update/delete audit history. Exclude passwords, session tokens and raw private messages from logs and training exports.
+- **NFR-07 - Recovery:** Document PostgreSQL/media backup and restore. Demonstrate restoration to a separate test database and verify representative orders, reports, prediction links and evidence files.
+- **NFR-08 - Observability:** Log request/job identifiers, queue age, failed jobs and model/ruleset versions. User-facing errors must not expose stack traces, storage paths or secrets.
+- **NFR-09 - Usability:** Risk indicators use text plus colour, forms have labels, keyboard navigation works and key screens adapt to mobile widths. Distinguish unassessed listings from low-risk listings.
+
+### 9.1 Measurable Course-Scale Targets
+
+These are proposed targets, not measured results. Record hardware, dependency versions, seed volume and test method alongside measurements.
+
+| Area | Target and test conditions |
+| --- | --- |
+| Browse/search latency | p95 server response <= 1 second with 10 concurrent users and 10,000 seeded listings; excludes image download |
+| Warm scan completion | p95 <= 15 seconds from queueing to result with a loaded model, one worker and at most 20 waiting jobs |
+| Order integrity | Two simultaneous buyers produce exactly one successful non-cancelled order; the other receives an availability conflict |
+| Worker recovery | A queued job survives a stopped worker; an expired processing lease is reclaimed without duplicate results |
+| Moderation accountability | Every tested privileged mutation has its required audit event; audit-write failure rolls back the mutation |
+
+If a target is missed, report the actual measurement and corrective plan rather than hiding the limitation.
+
+## 10. Acceptance and Verification Matrix
+
+| ID | Scenario | Pass condition |
+| --- | --- | --- |
+| AC-01 | Fresh database setup | PostgreSQL migrations/DDL and seeds execute; ERD and data dictionary match the resulting schema |
+| AC-02 | Register and authorize | Duplicate case-insensitive emails fail; self-assigned admin roles and unrelated-object access are rejected |
+| AC-03 | Publish and revise | Content/images form one immutable revision per change and one deduplicated job for that assessment context |
+| AC-04 | Search and risk filter | Only current visible listings match; unassessed/stale records never appear under low risk |
+| AC-05 | Worker unavailable | Listing commits with pending scan; restoring the worker completes it without republishing |
+| AC-06 | Repeated job execution | Recovery creates one result/alert; an expired worker claim cannot change state after another worker reclaims the job |
+| AC-07 | Late/expired prediction | Revision-1 results cannot become current after revision 2; model/rule changes and maximum age invalidate older results even with the scheduler stopped |
+| AC-08 | Failed prediction | Failed/unassessed state is explicit; no default zero score or green badge is shown |
+| AC-09 | Competing/repeated orders | Concurrent requests create one non-cancelled order; replayed request keys return the original order |
+| AC-10 | Order state machine | Unauthorized/invalid transitions fail; valid transitions and reservation changes commit with history |
+| AC-11 | Cancellation/removal | Cancellation does not restore administrator-hidden visibility; completed goods cannot be sold again |
+| AC-12 | Conversation privacy | Only participants can read/send; blocked users cannot send; unrelated users cannot mark messages read |
+| AC-13 | Report evidence | Private uploads work; unrelated users cannot fetch evidence; invalid file types/sizes are rejected |
+| AC-14 | Moderation and labels | One canonical decision chain exists per revision; an unresolved correction removes the earlier label; dismissal never becomes a legitimate label |
+| AC-15 | Audit atomicity | A forced audit-insert failure rolls back the associated moderation action |
+| AC-16 | Model reproducibility | Pinned training recreates the documented split/evaluation; saved inference uses the expected feature/class schema |
+| AC-17 | Dataset integrity | Source/license notes, synthetic flags and split manifests exist; leakage checks exclude future evidence and related split duplicates |
+| AC-18 | Model evaluation | Rules, Logistic Regression and Random Forest results include precision, recall, F1, average precision and confusion matrices; synthetic/real results are separate |
+| AC-19 | Version changes | Model activation/rollback and rule publication are audited, schedule rescans and preserve historical results |
+| AC-20 | Recovery and delivery | Database/media restore works and the core demo runs without paid external services |
+
+Use integration tests against PostgreSQL for triggers, row locks, partial indexes and transactions; SQLite does not verify these requirements. Add focused feature-extraction, permission and state-transition tests. Manual UI checks cover warning text, accessibility and mobile layouts.
+
+## 11. Implementation Phases and Exit Gates
+
+| Phase | Work package | Exit evidence |
+| --- | --- | --- |
+| 1 - Design | Confirm P0 scope, proposed stack, state diagrams, ERD, data dictionary and initial feature contract | Reviewed design and explicit open assumptions; no undefined payment behaviour |
+| 2 - Database and accounts | Migrations, constraints, queue triggers, audit infrastructure, accounts, revisions, uploads and search | AC-01 to AC-04 and ownership checks pass using assessment fixtures |
+| 3 - Marketplace workflow | Conversations, orders, idempotency, cancellation/expiry and private reports | AC-09 to AC-13 pass, including concurrent order test |
+| 4 - Dataset and model | Generator, provenance, splits, baselines, Random Forest and artifact registration | AC-16 to AC-18 pass; limitations documented |
+| 5 - Risk and moderation | Worker, risk UI, review queue, evidence decisions, rules/model lifecycle and rescans | AC-05 to AC-08, AC-14, AC-15 and AC-19 pass |
+| 6 - Demonstration and report | Performance, restore drill, usability, demo script and academic report | Remaining P0 criteria pass and AC-20 is demonstrated |
+| 7 - Optional extension | Appeals, in-app notices and analytics | P0 remains passing; extension-specific ownership/audit checks pass |
+
+Phases are dependency gates, not calendar promises. Re-estimate after the schema and generator are demonstrated. Commit coherent changes and validation evidence to the configured GitHub repository.
+
+## 12. Risks, Trade-offs and Open Decisions
+
+| Risk or decision | Handling |
+| --- | --- |
+| Synthetic-data bias | State the prototype claim and evaluate real outcomes separately when available |
+| False positives/report abuse | Use evidence and human review; no automatic penalties from scores or raw report volume |
+| Cold-start/missing price references | Preserve missing indicators; do not invent a reliable market value |
+| Stale/failed scans | Versioned context matching, explicit UI states, durable queue and retries |
+| Scope growth | Finish P0 before appeals, notifications, analytics or image research |
+| Administrator mistakes | Append-only corrections, reasons and an appeal path in P1 |
+| Proposed web framework | Django/templates is the baseline proposal; finalize in phase 1 without changing agreed AI/database choices |
+| Language and geography | Select demo currency, locations and supported listing language before generation; evaluate keyword limitations |
+| Evidence retention/storage | Document the course-demo retention/storage policy before collecting real participant data |
+
+## 13. Out of Scope
+
+- Real payment collection, escrow, refunds or verification of external transfers.
+- SMS/email delivery, third-party identity verification and native mobile applications.
+- Deep image forgery detection, semantic/vector search, LLM chatbots and automated legal/fraud determinations.
+- Production-scale distributed infrastructure, continuous online model learning and unrestricted model-artifact uploads.
+
+## 14. Academic and Repository Deliverables
+
+1. This PRD with requirement IDs, phase gates and change history.
+2. Full ER diagram, relational mapping, normalization discussion and data dictionary.
+3. PostgreSQL migrations/custom SQL, triggers, constraints, indexes, query examples and seed data.
+4. Marketplace application, risk worker and reproducible local setup instructions.
+5. Dataset generator/export process, provenance manifest, training/evaluation scripts and versioned model metadata.
+6. Results covering concurrency, permissions, failures, model evaluation and backup restoration.
+7. Final report explaining design choices, AI integration, dataset suitability, measured results, limitations and future work.
+8. A demo covering a normal sale, risky listing, administrator decision, concurrent purchase attempt and worker recovery.
+
+## 15. Primary Technical References
+
+- [Django authentication](https://docs.djangoproject.com/en/stable/topics/auth/) and [password management](https://docs.djangoproject.com/en/stable/topics/auth/passwords/): accounts, configurable hashing and sessions; object-specific authorization remains an application responsibility.
+- [Bootstrap license](https://getbootstrap.com/docs/5.3/about/license/): the proposed UI toolkit is available under the MIT license, with its attribution requirements.
+- [PostgreSQL explicit locking](https://www.postgresql.org/docs/current/explicit-locking.html) and [CREATE INDEX](https://www.postgresql.org/docs/current/sql-createindex.html): transactional row locking and partial unique indexes.
+- [scikit-learn RandomForestClassifier](https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.RandomForestClassifier.html): classifier interface and class weighting.
+- [scikit-learn common pitfalls](https://scikit-learn.org/stable/common_pitfalls.html), [cross-validation](https://scikit-learn.org/stable/modules/cross_validation.html), [calibration](https://scikit-learn.org/stable/modules/calibration.html) and [model persistence](https://scikit-learn.org/stable/model_persistence.html): leakage, splits, probability interpretation and trusted artifacts.
+- [UCI Shill Bidding](https://archive.ics.uci.edu/dataset/562/shill+bidding+dataset) and [BBB Scam Tracker](https://www.bbb.org/scamtracker): source scope and limitations in section 6.
+
+## 16. Change History
+
+| Version | Date | Summary |
+| --- | --- | --- |
+| 1.0 | 3 November 2026 | Initial marketplace/database scope and Random Forest/scikit-learn training plan |
+| 2.0 | 3 November 2026 | Priorities, proposed Python web stack, unified member roles, revisions, order transitions, durable scans, evidence-backed reviews, corrected dataset claims, expanded schema, measurable acceptance and phased delivery |
