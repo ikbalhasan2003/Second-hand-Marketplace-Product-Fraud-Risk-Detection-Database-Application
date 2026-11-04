@@ -6,6 +6,10 @@
 
 **System design:** [ARCHITECTURE.md](ARCHITECTURE.md)
 
+**Database specification:** [DATABASE_DESIGN.md](DATABASE_DESIGN.md)
+
+**Finalized implementation policy:** [P0 configuration](docs/CONFIGURATION.md) and [feature schema `marketplace-v1`](docs/FEATURE_CONTRACT.md). Exact dependency pins and verified behavior are maintained with the implementation; a documented default alone does not establish enforcement.
+
 **Updated:** 3 November 2026
 
 **Status:** Recommended implementation baseline; installation, implementation and verification are pending.

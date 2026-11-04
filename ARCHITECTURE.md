@@ -1,5 +1,7 @@
 # System Architecture Design
 
+**Detailed database design:** [ER diagrams, 3NF, relational schema and SQL](DATABASE_DESIGN.md)
+
 **Project:** Second-hand Marketplace & Product Fraud Risk Detection Database Application  
 **Architecture version:** 1.0 | **Updated:** 3 November 2026  
 **Requirements:** [PRD v2.1](PRD.md) | **Technology baseline:** [TECH_STACK.md](TECH_STACK.md)  
@@ -500,7 +502,7 @@ Training is an operator-run offline process with read-only access to an approved
 | Active seller | Publish/edit own eligible listings and fulfil sales | Own listing/risk history, sales and conversations |
 | Dual-role member | Buyer and seller actions evaluated in their respective apps | Combined authorized history; no self-purchase/conversation/report |
 | Blocked member | Cannot publish, purchase, send chat or enable another role | Own history/notices; existing fulfilment, cancellation, disputes and evidence as permitted |
-| Deactivated member | Cannot initiate marketplace activity or enable roles | Retain records; define authenticated history/obligation access in the account policy before implementation |
+| Deactivated member | Cannot initiate marketplace activity or enable roles | Authenticated own history/evidence and existing-order obligations remain accessible under the finalized account policy |
 | Administrator | Review, moderate, resolve disputes and manage configuration/exports | Authorized evidence and audited administrative history |
 
 Do not map marketplace blocking to a blanket Django authentication disablement: blocked members still need permitted history and existing-order workflows. A blanket role-required check also cannot override these obligation-specific exceptions. Every direct object request must enforce ownership/participation, and client-supplied actor/role/seller IDs are never authoritative.
@@ -651,17 +653,19 @@ requirements/                   pinned application/training/development requirem
 
 Names are proposed interfaces; most files above are not yet created. Storage roots, private datasets, model files and secrets stay outside public assets and Git.
 
-### 14.2 Decisions to Close During Implementation Design
+### 14.2 Implementation Decisions
+
+The 4 November 2026 [configuration decisions](docs/CONFIGURATION.md) and [marketplace-v1 feature contract](docs/FEATURE_CONTRACT.md) resolve the policy choices below. They distinguish requirements from implemented behavior and do not substitute for runtime acceptance evidence.
 
 | Decision | Current architectural position | Required before |
 | --- | --- | --- |
 | Django baseline and exact pins | Use the families proposed in `TECH_STACK.md`; pin compatible patches | Dependency installation |
 | Full physical schema | Preserve composite revisions; add campaign infrastructure explicitly | Initial migrations |
-| Feature windows and comparable selection | Use PRD definitions; freeze handling of target publication, revisions and missing values | Dataset generation/training |
-| Demo currency, language and locations | Configured values, no hard-coded unapproved geography | Seeds and keyword dictionary |
-| Deactivated-account access | Preserve facts and existing obligations; finalize allowed authenticated actions | Account status services |
-| File retention and real participant evidence | Document retention, access and controlled cleanup | Collection of real data |
-| Rate-limit/lease/batch parameters | Shared enforcement and configurable values | Abuse/recovery/performance verification |
+| Feature windows and comparable selection | Frozen `marketplace-v1`: 7-day publications, 30-day duplicates, 90-day same-category/condition/currency references, >=15 baseline, train-only imputation | Implement and verify shared extractor/training |
+| Demo currency, language and locations | USD; English; configurable demo suggestions with free-text locations | Apply configuration to forms/generator |
+| Deactivated-account access | Authenticated restricted history and existing-order/case obligations; no new trade, chat or role enabling | Implement and verify object-scoped policies |
+| File retention and real participant evidence | Indefinite course-demo evidence/history retention; no automatic deletion; controlled real-data erasure remains future work | Collection of real data |
+| Rate-limit/lease/batch parameters | Defaults fixed in configuration decision record; shared counters, 120-second lease, batch 100 | Abuse/recovery/performance verification |
 | Backup capacity and recovery targets | Coordinated snapshots and tested restore | Hosted demonstration |
 
 ### 14.3 Delivery Sequence

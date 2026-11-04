@@ -8,6 +8,10 @@
 
 **System design:** [System Architecture Design](ARCHITECTURE.md)
 
+**Database specification:** [Database Design](DATABASE_DESIGN.md), with [executable PostgreSQL scripts](database/README.md)
+
+**Finalized P0 decisions:** [Configuration and restricted-account policy](docs/CONFIGURATION.md) and [versioned feature contract `marketplace-v1`](docs/FEATURE_CONTRACT.md), agreed 4 November 2026. These specify implementation requirements; verified runtime behavior is reported separately.
+
 | Area | Project decision |
 | --- | --- |
 | Database | PostgreSQL; relational design, SQL constraints, triggers, indexes and transactions |
@@ -425,8 +429,8 @@ Phases are dependency gates, not calendar promises. Re-estimate after the schema
 | Administrator mistakes | Append-only corrections, reasons and an appeal path in P1 |
 | Proposed web framework | Django/templates is the baseline proposal; finalize in phase 1 without changing agreed AI/database choices |
 | Application hosting | Three separate app modules share one proposed Django host/database; independent hosts or domains can be evaluated later without duplicating business data |
-| Language and geography | Select demo currency, locations and supported listing language before generation; evaluate keyword limitations |
-| Evidence retention/storage | Document the course-demo retention/storage policy before collecting real participant data |
+| Language and geography | USD, English-only phrase support and configurable demo location suggestions; see the finalized configuration and v1 feature contract |
+| Evidence retention/storage | Indefinite course-demo retention; no automatic evidence deletion. A real-participant purge/anonymization policy remains future work |
 
 ## 13. Out of Scope
 
