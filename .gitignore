@@ -28,3 +28,11 @@ htmlcov/
 # Operating system files
 .DS_Store
 Thumbs.db
+
+# Temporary database validation binaries, packages and cluster
+/.database-tools/
+/.cache/
+/.tools/
+/runtime/
+/exports/
+/.local/
