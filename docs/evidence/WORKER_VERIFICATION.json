@@ -1,0 +1,29 @@
+{
+  "date": "2026-11-04",
+  "command": ".venv/Scripts/python.exe -m pytest tests/integration/test_worker.py -q",
+  "database": "isolated temporary PostgreSQL 18 database created and dropped by fixture",
+  "actual_result": "2 passed in 5.02s (latest run; first run 9.98s)",
+  "model": "Real fitted preprocessing-plus-Random-Forest trained during fixture on 300 synthetic records",
+  "verified": [
+    "Fresh reference schema installation",
+    "Trusted synthetic dataset/model registration and explicit activation",
+    "Actual inference and current ready risk score",
+    "Price baseline missing remains null with flag",
+    "Expired lease reclaimed under new fencing token",
+    "Old token heartbeat/completion rejection",
+    "Frozen snapshot reused across claims",
+    "Exactly one committed result per job",
+    "Configuration change excludes prior numeric result",
+    "Missing artifact produces explicit terminal sanitized failure",
+    "One latest eligible revision per price reference",
+    "16 reference prices median17.50 and target ratio2",
+    "Latest unresolved correction removes earlier fraud history",
+    "Missing observed seller location preserves null/flag and earlier frozen evidence"
+  ],
+  "limitations": [
+    "Synthetic-only model performance; no real-world fraud accuracy claim",
+    "OS process supervision and scheduled tasks are documented but not installed",
+    "Performance benchmark is recorded separately by delivery verification",
+    "Coordinated restore drill is recorded separately by delivery verification"
+  ]
+}
