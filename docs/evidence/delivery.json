@@ -1,0 +1,171 @@
+{
+  "all_marketplace_and_training_data_synthetic": true,
+  "databases": {
+    "restore": "delivery_restore_20261104100806_1b803d19",
+    "search": "delivery_search_20261104100806_1b803d19",
+    "source": "delivery_source_20261104100806_1b803d19"
+  },
+  "dependencies": {
+    "Django": "5.2.19",
+    "Pillow": "13.0.0",
+    "numpy": "2.5.4",
+    "psycopg": "3.3.7",
+    "scikit-learn": "1.9.1"
+  },
+  "executed_at_utc": "2026-11-04T10:08:06.785469+00:00",
+  "git_revision": "ec6a3fe2d63ae0bbd353660e9d7b1d114425c8a2",
+  "hardware": {
+    "logical_cpus": 12,
+    "platform": "Windows-11-10.0.26300-SP0",
+    "processor": "Intel64 Family 6 Model 151 Stepping 2, GenuineIntel"
+  },
+  "limitations": [
+    "Search HTTP timing excludes socket/TLS/image transfer",
+    "Single-host synthetic workloads; no real-world load or fraud claim",
+    "Operator-run quiesced restore drill, not an online point-in-time recovery test",
+    "Generated databases and recovery files retained for review"
+  ],
+  "passed": false,
+  "postgresql": "PostgreSQL 18.6 on x86_64-windows, compiled by msvc-19.44.35229, 64-bit",
+  "python": "3.13.18",
+  "reproducibility": {
+    "all_probabilities_identical": true,
+    "complete_evaluation_identical": true,
+    "dataset_sha256": "7038f56947f8a07f9dc9e501aff19851cf40190a2c286f648fe9c5c9735fc959",
+    "generation_records_identical": true,
+    "passed": true,
+    "pipeline_bytes_identical": true,
+    "records": 5000,
+    "repeated_artifact_sha256": "727e9b7c6346295ae8e9bdfb87fe35aba395935691d6394a0647aa3221aef2bb",
+    "seed": 20261104,
+    "synthetic_only": true,
+    "test_metrics": {
+      "logistic_regression": {
+        "average_precision": 0.606811354312117,
+        "confusion_matrix": {
+          "false_negative": 36,
+          "false_positive": 117,
+          "true_negative": 458,
+          "true_positive": 149
+        },
+        "f1": 0.6607538802660754,
+        "fraud_count": 185,
+        "fraud_prevalence": 0.24342105263157895,
+        "precision": 0.5601503759398496,
+        "recall": 0.8054054054054054,
+        "sample_count": 760,
+        "threshold": 0.5
+      },
+      "random_forest": {
+        "average_precision": 0.5558813973462244,
+        "confusion_matrix": {
+          "false_negative": 45,
+          "false_positive": 98,
+          "true_negative": 477,
+          "true_positive": 140
+        },
+        "f1": 0.6619385342789598,
+        "fraud_count": 185,
+        "fraud_prevalence": 0.24342105263157895,
+        "precision": 0.5882352941176471,
+        "recall": 0.7567567567567568,
+        "sample_count": 760,
+        "threshold": 0.5
+      },
+      "rules_baseline": {
+        "average_precision": 0.5149056232696771,
+        "confusion_matrix": {
+          "false_negative": 96,
+          "false_positive": 58,
+          "true_negative": 517,
+          "true_positive": 89
+        },
+        "f1": 0.536144578313253,
+        "fraud_count": 185,
+        "fraud_prevalence": 0.24342105263157895,
+        "precision": 0.6054421768707483,
+        "recall": 0.4810810810810811,
+        "sample_count": 760,
+        "threshold": 0.5
+      }
+    }
+  },
+  "restore": {
+    "checks": {
+      "administrator_private_evidence_http": true,
+      "checksums_artifacts": true,
+      "checksums_private": true,
+      "checksums_public": true,
+      "latest_unresolved_chain_retained": true,
+      "private_evidence_reporter_http": true,
+      "private_evidence_unrelated_denied": true,
+      "purchased_snapshot_http": true,
+      "report_status_http": true,
+      "restored_page_admin-app": true,
+      "restored_page_admin-app_audit-log": true,
+      "restored_page_admin-app_exports": true,
+      "restored_page_admin-app_models": true,
+      "restored_page_admin-app_reviews": false,
+      "restricted_effective_role": true,
+      "result_job_revision_links": true,
+      "seller_historical_revision_http": true,
+      "seller_private_evidence_denied": true,
+      "table_count_admin_audit_logs": true,
+      "table_count_dataset_records": true,
+      "table_count_fraud_reports": true,
+      "table_count_moderation_reviews": true,
+      "table_count_product_revisions": true,
+      "table_count_products": true,
+      "table_count_report_attachments": true,
+      "table_count_risk_logs": true,
+      "table_count_risk_scan_jobs": true,
+      "table_count_transactions": true,
+      "trusted_pipeline_loads": true,
+      "unrelated_order_denied": true,
+      "web_cannot_claim_worker_jobs": true,
+      "web_cannot_delete_audit": true,
+      "web_cannot_update_risk_results": true
+    },
+    "database": "delivery_restore_20261104100806_1b803d19",
+    "database_dump_sha256": "db012ca6d83e58d61348ccb369f318abab53625e92c8c3a87d95893b6a494343",
+    "file_counts": {
+      "artifacts": 6,
+      "private": 1,
+      "public": 1
+    },
+    "method": "Custom-format pg_dump/pg_restore into a new database, coordinated closed media/artifact copy, real HTTP role/ownership checks under a separate restricted web login",
+    "passed": false,
+    "runtime_user": "delivery_web_ba5bb9d89982",
+    "source_writes_quiesced": true
+  },
+  "run_id": "20261104100806_1b803d19",
+  "search": {
+    "concurrent_clients": 10,
+    "http_statuses": [
+      200
+    ],
+    "maximum_seconds": 0.305421999997634,
+    "mean_seconds": 0.17670396099987556,
+    "method": "Django in-process HTTP Client including middleware/view/templates/PostgreSQL; ten threads, ten requests each, five warmed query variants; excludes socket/TLS and image transfer",
+    "p95_seconds": 0.2673856999972486,
+    "passed": true,
+    "requests": 100,
+    "target_seconds": 1
+  },
+  "warm_scan": {
+    "jobs": 20,
+    "maximum_seconds": 1.504275,
+    "method": "Twenty actual publications then one reusable RiskWorker; database completed_at minus job created_at, including queue wait; one separate real warmup prediction",
+    "model_preloaded": true,
+    "p95_seconds": 1.444963,
+    "passed": true,
+    "target_seconds": 15,
+    "waiting_at_start": 20,
+    "workers": 1
+  },
+  "workload": {
+    "count": 10000,
+    "seed_seconds": 3.561110099995858
+  },
+  "workspace": "runtime\\delivery\\20261104100806_1b803d19"
+}

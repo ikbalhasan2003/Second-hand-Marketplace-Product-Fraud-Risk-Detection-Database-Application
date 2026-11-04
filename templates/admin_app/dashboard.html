@@ -1,0 +1,7 @@
+{% extends 'admin_app/base.html' %}{% block admin_content %}
+<p class="text-muted">Evidence, decisions and operational health. AI scores remain advisory.</p>
+<div class="row g-3 mb-4">{% for name,count in counts.items %}<div class="col-6 col-lg-3"><div class="card card-body"><strong>{{ count }}</strong><span>{{ name|title }}</span></div></div>{% endfor %}</div>
+<p><a class="btn btn-primary" href="/admin-app/review-queue/">Open moderation queue</a></p>
+<h2>Recoverable campaigns</h2><ul>{% for campaign in campaigns %}<li>#{{ campaign.campaign_id }} · {{ campaign.event_type }} · {{ campaign.status }} · cursor {{ campaign.cursor_product_id }} of scope cutoff {{ campaign.cutoff_product_id }}</li>{% empty %}<li>No unfinished rescan campaigns.</li>{% endfor %}</ul>
+<h2>Recent audit events</h2><ul>{% for event in recent %}<li><a href="/admin-app/audit-log/{{ event.audit_id }}/">#{{ event.audit_id }} · {{ event.action_type }}</a> · {{ event.occurred_at }}</li>{% empty %}<li>No privileged actions recorded.</li>{% endfor %}</ul>
+{% endblock %}

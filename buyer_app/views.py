@@ -41,19 +41,38 @@ def catalog(request):
             if data.get(field) is not None and data.get(field) != "":
                 where.append(expression)
                 params.append(data[field])
-        if data.get("risk") in ("low", "high"):
-            where += ["k.assessment_state='ready'", "k.risk_level=%s"]
-            params.append(data["risk"])
-        elif data.get("risk") == "unassessed":
-            where.append("k.assessment_state IS DISTINCT FROM 'ready'")
+        if data.get("risk"):
+            # A completed current assessment has a unique bound job. Test that
+            # indexed relation directly; evaluating the display view for every
+            # catalog candidate causes needless lateral job scans.
+            ready = """EXISTS(SELECT 1 FROM risk_scan_jobs j JOIN risk_logs l USING(job_id)
+                JOIN risk_models m ON m.model_id=j.model_id AND m.state='active'
+                JOIN risk_rulesets s ON s.ruleset_id=j.ruleset_id AND s.state='active'
+                WHERE j.product_id=p.product_id AND j.revision_no=p.current_revision_no
+                AND j.context_version=p.context_version AND j.status='succeeded'
+                AND j.feature_schema_id=m.feature_schema_id AND j.feature_schema_id=s.feature_schema_id
+                AND j.feature_as_of>=clock_timestamp()-s.max_assessment_age
+                AND j.feature_as_of<=clock_timestamp()"""
+            if data["risk"] == "unassessed":
+                where.append("NOT " + ready + ")")
+            else:
+                where.append(ready + " AND l.risk_level=%s)")
+                params.append(data["risk"])
     else:
         where.append("false")
     join = """FROM products p JOIN product_revisions r ON (r.product_id,r.revision_no)=(p.product_id,p.current_revision_no)
-        JOIN users u ON u.user_id=p.seller_id LEFT JOIN current_listing_risk k ON k.product_id=p.product_id WHERE """ + " AND ".join(where)
+        JOIN users u ON u.user_id=p.seller_id WHERE """ + " AND ".join(where)
     count = one("SELECT count(*) AS total " + join, params)["total"]
     page = Paginator(range(count), 12).get_page(request.GET.get("page"))
     sort = "r.price,p.product_id DESC" if data.get("sort") == "price" else "p.created_at DESC,p.product_id DESC"
-    listings = rows("SELECT p.product_id,p.availability,r.title,r.price,r.currency,r.location,k.assessment_state,k.risk_level " + join + " ORDER BY " + sort + " LIMIT 12 OFFSET %s", params + [(page.number - 1) * 12])
+    listings = rows("SELECT p.product_id,p.availability,r.title,r.price,r.currency,r.location,(SELECT storage_key FROM product_images i WHERE i.product_id=p.product_id AND i.revision_no=p.current_revision_no ORDER BY sort_order LIMIT 1) AS image_key " + join + " ORDER BY " + sort + " LIMIT 12 OFFSET %s", params + [(page.number - 1) * 12])
+    risk_by_product = {item["product_id"]: item for item in rows("SELECT product_id,assessment_state,risk_level FROM current_listing_risk WHERE product_id=ANY(%s)", [[item["product_id"] for item in listings]])} if listings else {}
+    for listing in listings:
+        listing.update(risk_by_product.get(listing["product_id"], {"assessment_state": "pending", "risk_level": None}))
+    if data.get("risk") in ("low", "high"):
+        listings = [item for item in listings if item["assessment_state"] == "ready" and item["risk_level"] == data["risk"]]
+    elif data.get("risk") == "unassessed":
+        listings = [item for item in listings if item["assessment_state"] != "ready"]
     query = request.GET.copy()
     query.pop("page", None)
     return render(request, "buyer/catalog.html", {"title": "Find your next useful thing", "form": form, "listings": listings, "page": page, "query": query.urlencode(), "count": count})
@@ -71,7 +90,11 @@ def listing_detail(request, product_id, revision_no=None):
         if not permitted:
             raise Http404
     images = rows("SELECT * FROM product_images WHERE product_id=%s AND revision_no=%s ORDER BY sort_order", [product_id, listing["revision_no"]])
-    return render(request, "buyer/detail.html", {"title": listing["title"], "listing": listing, "images": images, "request_key": uuid.uuid4(), "historical": revision_no is not None})
+    assessment = one("""SELECT h.observed_factors,m.version AS model_version,s.version AS ruleset_version
+        FROM risk_score_history h JOIN current_listing_risk k USING(risk_id)
+        JOIN risk_models m ON m.model_id=h.model_id JOIN risk_rulesets s ON s.ruleset_id=h.ruleset_id
+        WHERE k.product_id=%s AND k.assessment_state='ready'""", [product_id]) if revision_no is None else None
+    return render(request, "buyer/detail.html", {"title": listing["title"], "listing": listing, "images": images, "assessment": assessment, "request_key": uuid.uuid4(), "historical": revision_no is not None})
 
 
 @require_role("buyer", active=True)
@@ -92,8 +115,10 @@ def role_gate(request, role):
 def orders(request, role="buyer"):
     role_gate(request, role)
     column = "buyer_id" if role == "buyer" else "seller_id"
-    result = rows("SELECT * FROM seller_order_history WHERE " + column + "=%s ORDER BY created_at DESC,transaction_id DESC LIMIT 100", [request.user.pk])
-    return render(request, "buyer/orders.html", {"title": "My purchases" if role == "buyer" else "Sales", "orders": result, "role": role})
+    count = one("SELECT count(*) AS n FROM seller_order_history WHERE " + column + "=%s", [request.user.pk])["n"]
+    page = Paginator(range(count), 20).get_page(request.GET.get("page"))
+    result = rows("SELECT * FROM seller_order_history WHERE " + column + "=%s ORDER BY created_at DESC,transaction_id DESC LIMIT 20 OFFSET %s", [request.user.pk, (page.number - 1) * 20])
+    return render(request, "buyer/orders.html", {"title": "My purchases" if role == "buyer" else "Sales", "orders": result, "role": role, "page": page})
 
 
 def order_detail(request, order_id, role="buyer"):
@@ -139,10 +164,12 @@ def conversation_record(request, conversation_id, role):
 def conversations(request, role="buyer"):
     role_gate(request, role)
     column = "c.buyer_id" if role == "buyer" else "p.seller_id"
+    count = one("SELECT count(*) AS n FROM conversations c JOIN products p USING(product_id) WHERE " + column + "=%s", [request.user.pk])["n"]
+    page = Paginator(range(count), 20).get_page(request.GET.get("page"))
     result = rows("""SELECT c.*,r.title FROM conversations c JOIN products p USING(product_id)
         JOIN product_revisions r ON (r.product_id,r.revision_no)=(p.product_id,p.current_revision_no)
-        WHERE """ + column + "=%s ORDER BY c.conversation_id DESC LIMIT 100", [request.user.pk])
-    return render(request, "buyer/conversations.html", {"title": "Messages", "conversations": result, "role": role})
+        WHERE """ + column + "=%s ORDER BY c.conversation_id DESC LIMIT 20 OFFSET %s", [request.user.pk, (page.number - 1) * 20])
+    return render(request, "buyer/conversations.html", {"title": "Messages", "conversations": result, "role": role, "page": page})
 
 
 def conversation_detail(request, conversation_id, role="buyer"):
@@ -169,7 +196,8 @@ def poll_messages(request, conversation_id, role="buyer"):
     except ValueError:
         return JsonResponse({"error": "Invalid message cursor"}, status=400)
     result = rows("SELECT message_id,sender_id,message_text,sent_at,read_at FROM chat_messages WHERE conversation_id=%s AND message_id>%s ORDER BY message_id LIMIT 50", [conversation_id, after])
-    return JsonResponse({"messages": result, "has_more": len(result) == 50})
+    receipts = rows("SELECT message_id,read_at FROM chat_messages WHERE conversation_id=%s AND sender_id=%s AND read_at IS NOT NULL ORDER BY message_id DESC LIMIT 50", [conversation_id, request.user.pk])
+    return JsonResponse({"messages": result, "receipts": receipts, "has_more": len(result) == 50})
 
 
 @require_POST
@@ -180,7 +208,16 @@ def mark_read(request, conversation_id, role="buyer"):
     except ValueError:
         return JsonResponse({"error": "Invalid message cursor"}, status=400)
     with actor_transaction(request.user):
-        rows("UPDATE chat_messages SET read_at=clock_timestamp() WHERE conversation_id=%s AND message_id<=%s AND sender_id<>%s AND read_at IS NULL", [conversation_id, through, request.user.pk])
+        if "message_ids" in request.POST:
+            try:
+                ids = [int(value) for value in request.POST.get("message_ids", "").split(",") if value]
+                if len(ids) > 50 or any(value <= 0 for value in ids):
+                    raise ValueError
+            except ValueError:
+                return JsonResponse({"error": "Invalid visible message IDs"}, status=400)
+            rows("UPDATE chat_messages SET read_at=clock_timestamp() WHERE conversation_id=%s AND message_id=ANY(%s) AND sender_id<>%s AND read_at IS NULL", [conversation_id, ids, request.user.pk])
+        else:
+            rows("UPDATE chat_messages SET read_at=clock_timestamp() WHERE conversation_id=%s AND message_id<=%s AND sender_id<>%s AND read_at IS NULL", [conversation_id, through, request.user.pk])
     return JsonResponse({"read": True})
 
 
@@ -241,8 +278,10 @@ def report_new(request, product_id):
 
 @require_role("buyer")
 def reports(request):
-    result = rows("SELECT f.*,r.title FROM fraud_reports f JOIN product_revisions r USING(product_id,revision_no) WHERE reporter_id=%s ORDER BY report_id DESC LIMIT 100", [request.user.pk])
-    return render(request, "buyer/reports.html", {"title": "My submitted reports", "reports": result})
+    count = one("SELECT count(*) AS n FROM fraud_reports WHERE reporter_id=%s", [request.user.pk])["n"]
+    page = Paginator(range(count), 20).get_page(request.GET.get("page"))
+    result = rows("SELECT f.*,r.title FROM fraud_reports f JOIN product_revisions r USING(product_id,revision_no) WHERE reporter_id=%s ORDER BY report_id DESC LIMIT 20 OFFSET %s", [request.user.pk, (page.number - 1) * 20])
+    return render(request, "buyer/reports.html", {"title": "My submitted reports", "reports": result, "page": page})
 
 
 @require_role("buyer")

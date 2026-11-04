@@ -1,0 +1,34 @@
+{
+  "all_marketplace_and_training_data_synthetic": true,
+  "databases": {
+    "restore": "delivery_restore_20261104100204_4bd51193",
+    "search": "delivery_search_20261104100204_4bd51193",
+    "source": "delivery_source_20261104100204_4bd51193"
+  },
+  "dependencies": {
+    "Django": "5.2.19",
+    "Pillow": "13.0.0",
+    "numpy": "2.5.4",
+    "psycopg": "3.3.7",
+    "scikit-learn": "1.9.1"
+  },
+  "executed_at_utc": "2026-11-04T10:02:04.803727+00:00",
+  "failed_with": "CalledProcessError",
+  "git_revision": "87b98ffce0b1ab1f25d49391e55cd91c7c452df5",
+  "hardware": {
+    "logical_cpus": 12,
+    "platform": "Windows-11-10.0.26300-SP0",
+    "processor": "Intel64 Family 6 Model 151 Stepping 2, GenuineIntel"
+  },
+  "limitations": [
+    "Search HTTP timing excludes socket/TLS/image transfer",
+    "Single-host synthetic workloads; no real-world load or fraud claim",
+    "Operator-run quiesced restore drill, not an online point-in-time recovery test",
+    "Generated databases and recovery files retained for review"
+  ],
+  "passed": false,
+  "postgresql": "PostgreSQL 18.6 on x86_64-windows, compiled by msvc-19.44.35229, 64-bit",
+  "python": "3.13.18",
+  "run_id": "20261104100204_4bd51193",
+  "workspace": "runtime\\delivery\\20261104100204_4bd51193"
+}

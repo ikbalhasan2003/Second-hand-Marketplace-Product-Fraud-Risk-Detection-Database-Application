@@ -1,0 +1,29 @@
+# Buyer, Seller and Admin demonstration
+
+Use the [Windows setup](SETUP.md), [account setup](ACCOUNTS.md), [migration authority](MIGRATIONS.md) and [ML instructions](ML_PIPELINE.md). The demo uses synthetic records and agreements only. No payment gateway, external messaging broker or paid model API is required.
+
+## Prepare the environment
+
+1. Apply Django migrations to a fresh PostgreSQL application database using the migration credential. Apply process privileges according to the deployment instructions, then run the web process with the web login.
+2. Register a seller through `/seller-app/register/` and two buyers through `/buyer-app/register/`, using distinct synthetic `.invalid` emails. Keep Buyer One and Buyer Two in different browser profiles so their sessions are independent. Existing identities enable the other marketplace role explicitly from Account.
+3. Provision a separate administrator with the trusted management command documented in [ACCOUNTS.md](ACCOUNTS.md). Public registration never provisions an administrator. Do not use the standalone SQL seed as live credentials: its `!` passwords cannot authenticate.
+4. Generate/train/register the actual synthetic dataset/model following [ML_PIPELINE.md](ML_PIPELINE.md), or leave the model unregistered to demonstrate pending risk honestly. Registration and activation are separate controlled actions. The fitted pipeline/artifact roots must match the worker process's configuration.
+
+## Cross-application workflow
+
+1. As Seller, open `/seller-app/`, create a listing and save only a title as a private draft. Confirm there is no public content or completed score. Add a description, category, positive USD price, condition and location; upload a small JPEG/PNG/WebP image. Publish. The receipt identifies immutable revision r1 and a durable queued scan.
+2. Keep the worker stopped. As Buyer One, search for the title, open the listing and observe the explicit pending assessment. Apply the Low-risk filter and verify the unassessed listing is absent. Risk absence never means zero risk.
+3. Activate a compatible trusted model/ruleset as Admin, run the scan worker and maintenance campaign processing, then refresh the listing. Show its actual observed factors, timestamps and current state. The synthetic-only model output is advisory; do not invent a desired score for the demonstration.
+4. As Buyer One, start a conversation and send a question. As Seller, open Buyer conversations and reply. Load the thread in Buyer Two's session by copying the URL; access is denied. Demonstrate read receipts only for messages actually viewed by the receiving participant.
+5. Before ordering, publish a legitimate edit as r2. Show Seller revision history retaining r1. As Buyer One, review r2 and place an order. Repeat the same submitted request key in the automated test rather than manually making a second agreement: it returns the original order. The independent database regression demonstrates a competing-buyer race.
+6. As Seller, show the reserved listing and disabled material editing. Accept the order and mark it shipped; as Buyer One, confirm receipt. Show the shared timeline and immutable purchased revision. An in-person handover instead permits Buyer completion from Accepted. No screen verifies external payment or shipping.
+7. As Buyer One, submit an order-linked concern with a private evidence image. Show the purchased revision and report status. Buyer Two and the reported seller cannot retrieve the evidence URL. A blocked/deactivated reporter can still add evidence to their own open case and complete authorized existing-order obligations; new trading/chat is restricted.
+8. As Admin, open the deduplicated review queue and case workspace. Distinguish a user allegation, model score and human verdict. Record an evidence-backed decision with a reason; show its audit receipt. Append an Unresolved correction referencing the prior decision and confirm that the older label is excluded from future eligible exports.
+9. Demonstrate listing/account moderation as separate reasoned administrator actions. Blocking or removal never occurs solely because the model score is high. Show that cancellation cannot restore administrator-removed visibility and that completed goods cannot sell again.
+10. Inspect model/rules history and request an audited rescan or activate a compatible version. Existing predictions become outdated until reassessment; campaign progress comes from persisted database state. Open the read-only audit browser and administrator-only dataset export workflow.
+
+## Recovery and limitations
+
+Run the [delivery verifier](DELIVERY.md) on a disposable local PostgreSQL server to reproduce the performance workload and coordinated database/media/artifact restore. It creates new isolated databases and retains the recovery set for inspection. The script verifies actual file checksums, order/revision/result links and private-evidence access through restricted HTTP requests.
+
+The automated suites and measured evidence are linked in [DELIVERY.md](DELIVERY.md). Manual keyboard/mobile/browser observations are separate acceptance evidence; do not present an unperformed manual check as passed. Dataset performance is synthetic only. Real payments, identity verification, external notifications, appeals, online learning and image forgery detection remain outside P0.

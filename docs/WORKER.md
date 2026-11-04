@@ -1,5 +1,7 @@
 # Risk worker and scheduler
 
+The latest prompts 1–8 checkpoint, including executed heartbeat, retry and maintenance-command recovery tests, is recorded in [PRE_ADMIN_VERIFICATION.md](PRE_ADMIN_VERIFICATION.md).
+
 The implemented worker uses PostgreSQL's existing `claim_risk_job`, `save_risk_snapshot`, `heartbeat_risk_job`, `fail_risk_job` and `complete_risk_job` functions. The process claims and commits quickly, extracts all source facts in one repeatable-read read-only transaction, persists the frozen snapshot in a separate claim-checked transaction, loads a trusted artifact and completes the result atomically through the database API. A background thread renews the lease every one-third of the configured interval, capped at thirty seconds, using a separate connection. No model runs inside a database trigger or a web request.
 
 Snapshot keys are `schema_version`, `features`, `feature_evidence` and access-controlled `evidence`. The safe `feature_evidence` contains `latest_source_at` and `point_in_time_snapshot=true` for approved dataset exports. Full evidence retains the target, selected reference/review/publication/duplicate identities, exact median/price strings, observed locations, windows, cutoff and feature definition hash. It is never returned as public risk data. Runtime extraction observes the current profile within the same database snapshot; historical exports reuse this persisted snapshot and cannot reconstruct old profile locations from present values.

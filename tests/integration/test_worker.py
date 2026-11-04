@@ -1,12 +1,14 @@
 """Real PostgreSQL + fitted artifact checks in an automatically isolated database."""
 
 from pathlib import Path
+from io import StringIO
 import time
 from uuid import uuid4
 
 import psycopg
 import pytest
 from django.conf import settings
+from django.core.management import call_command
 from psycopg import sql
 from psycopg.conninfo import make_conninfo
 from psycopg.rows import dict_row
@@ -18,7 +20,7 @@ from ml.datasets.io import write_dataset
 from ml.training.register import register
 from ml.training.train import train
 from risk.features import extract_snapshot
-from risk.worker import RiskWorker
+from risk.worker import RiskWorker, lease_heartbeat
 
 
 @pytest.fixture(scope="module")
@@ -152,3 +154,64 @@ def test_live_feature_selection_deduplicates_revisions_and_new_unresolved_review
         # Mutable locations must be frozen at extraction time; old snapshots remain intact.
         assert snapshot["evidence"]["seller_location_observed"] == "Demo City"
         assert missing_location["evidence"]["seller_location_observed"] is None
+
+
+def test_heartbeat_keeps_claim_alive_and_retry_has_backoff(isolated_worker_database):
+    dsn, _, _ = isolated_worker_database
+    with psycopg.connect(dsn, autocommit=True, row_factory=dict_row) as connection:
+        job = connection.execute("SELECT * FROM claim_risk_job(interval '1 second')").fetchone()
+        assert job is not None
+        with lease_heartbeat(dsn, job, 1) as lost:
+            deadline = time.monotonic() + 4
+            while True:
+                state = connection.execute(
+                    "SELECT lease_expires_at FROM risk_scan_jobs WHERE job_id=%s", (job["job_id"],)
+                ).fetchone()
+                if state["lease_expires_at"] > job["lease_expires_at"]:
+                    break
+                assert time.monotonic() < deadline, "Heartbeat did not renew the lease"
+                time.sleep(0.05)
+            assert not lost.is_set()
+            connection.execute(
+                "SELECT fail_risk_job(%s,%s,'transient_test',true)", (job["job_id"], job["claim_token"])
+            )
+        state = connection.execute(
+            "SELECT status,claim_token,retry_at>clock_timestamp() AS delayed,error_code "
+            "FROM risk_scan_jobs WHERE job_id=%s", (job["job_id"],)
+        ).fetchone()
+        assert state == {"status": "queued", "claim_token": None, "delayed": True, "error_code": "transient_test"}
+        with pytest.raises(psycopg.Error):
+            connection.execute("SELECT complete_risk_job(%s,%s,10,'[]',NULL)", (job["job_id"], job["claim_token"]))
+
+
+def test_maintenance_command_resumes_bounded_campaign_and_replays_safely(isolated_worker_database, monkeypatch):
+    dsn, _, _ = isolated_worker_database
+    monkeypatch.setenv("MAINTENANCE_DATABASE_URL", dsn)
+    with psycopg.connect(dsn, autocommit=True, row_factory=dict_row) as connection:
+        # Finish prior test obligations so this command's bounded progress is observable.
+        for campaign in connection.execute("SELECT campaign_id FROM risk_rescan_campaigns WHERE status<>'completed'").fetchall():
+            connection.execute("SELECT run_rescan_batch(%s,1000)", (campaign["campaign_id"],))
+        output = StringIO()
+        call_command("maintain_marketplace", "--daily", "--date", "2026-11-05",
+                     "--batch-size", "1", "--max-batches", "1", stdout=output)
+        campaign = connection.execute(
+            "SELECT * FROM risk_rescan_campaigns WHERE refresh_date='2026-11-05' AND refresh_timezone=%s",
+            (settings.TIME_ZONE,)
+        ).fetchone()
+        assert campaign["status"] == "processing"
+        assert campaign["cursor_product_id"] > 0
+        call_command("maintain_marketplace", "--expire", stdout=StringIO())
+        completed = connection.execute(
+            "SELECT status,cursor_product_id,cutoff_product_id FROM risk_rescan_campaigns WHERE campaign_id=%s",
+            (campaign["campaign_id"],)
+        ).fetchone()
+        assert completed["status"] == "completed"
+        assert completed["cursor_product_id"] == completed["cutoff_product_id"]
+        contexts = connection.execute("SELECT product_id,context_version FROM products ORDER BY product_id").fetchall()
+        receipts = connection.execute("SELECT * FROM risk_rescan_events WHERE campaign_id=%s ORDER BY product_id",
+                                      (campaign["campaign_id"],)).fetchall()
+        assert receipts
+        call_command("maintain_marketplace", "--daily", "--date", "2026-11-05", "--expire", stdout=StringIO())
+        assert connection.execute("SELECT product_id,context_version FROM products ORDER BY product_id").fetchall() == contexts
+        assert connection.execute("SELECT * FROM risk_rescan_events WHERE campaign_id=%s ORDER BY product_id",
+                                  (campaign["campaign_id"],)).fetchall() == receipts

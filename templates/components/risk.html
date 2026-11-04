@@ -1,0 +1,5 @@
+<section class="risk" aria-label="Listing risk assessment">
+{% if historical %}<strong>Historical revision</strong><p>Today's risk indicator does not describe this snapshot.</p>
+{% elif listing.assessment_state == 'ready' %}<strong>{{ listing.risk_level|title }} risk · {{ listing.risk_score }}/100</strong><p>Assessed {{ listing.feature_as_of }}</p>{% if assessment %}<ul>{% for factor in assessment.observed_factors %}<li>{{ factor }}</li>{% empty %}<li>No configured warning factors recorded.</li>{% endfor %}</ul><small>Model {{ assessment.model_version }} · Rules {{ assessment.ruleset_version }}</small>{% endif %}
+{% else %}<strong>{{ listing.assessment_state|default:'pending'|title }} assessment</strong><p>No current score is available.{% if listing.assessment_state == 'failed' %} Processing failed; use the listing evidence and wait for reassessment.{% elif listing.assessment_state == 'stale' %} An older assessment has expired or its context changed.{% elif listing.assessment_state == 'scanning' %} A worker is processing the current context.{% else %} Assessment work is waiting to run.{% endif %}</p>{% endif %}
+</section>

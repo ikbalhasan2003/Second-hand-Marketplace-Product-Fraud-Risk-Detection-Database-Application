@@ -1,0 +1,4 @@
+{% extends 'admin_app/base.html' %}{% block admin_content %}
+<p>A draft records new thresholds; activation publishes immutable contents and queues recoverable rescans. No user or listing is automatically blocked by a threshold.</p><p>Approved feature schemas: {% for schema in schemas %}#{{ schema.feature_schema_id }} {{ schema.version }}{% if not forloop.last %}, {% endif %}{% empty %}None registered. Register an approved feature contract first.{% endfor %}</p>
+<form method="post">{% csrf_token %}{{ form.as_p }}<button class="btn btn-primary">Create audited draft</button></form>
+{% endblock %}

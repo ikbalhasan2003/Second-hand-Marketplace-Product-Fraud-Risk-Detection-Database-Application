@@ -31,6 +31,7 @@ TEMPLATES = [{"BACKEND": "django.template.backends.django.DjangoTemplates", "DIR
               "APP_DIRS": True, "OPTIONS": {"context_processors": [
                   "django.template.context_processors.request", "django.contrib.auth.context_processors.auth",
                   "django.contrib.messages.context_processors.messages",
+                  "accounts.context.marketplace_context",
               ]}}]
 WSGI_APPLICATION = "config.wsgi.application"
 ASGI_APPLICATION = "config.asgi.application"
