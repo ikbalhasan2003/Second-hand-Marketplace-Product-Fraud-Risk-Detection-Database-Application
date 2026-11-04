@@ -39,7 +39,7 @@ DATABASES = {"default": {"ENGINE": "django.db.backends.postgresql", "NAME": os.g
                          "CONN_MAX_AGE": 0, "OPTIONS": {"connect_timeout": 5}}}
 AUTH_USER_MODEL = "accounts.User"
 AUTHENTICATION_BACKENDS = ["accounts.backends.EmailBackend"]
-AUTH_PASSWORD_HASHERS = ["django.contrib.auth.hashers.BCryptSHA256PasswordHasher"]
+PASSWORD_HASHERS = ["django.contrib.auth.hashers.BCryptSHA256PasswordHasher"]
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator", "OPTIONS": {"user_attributes": ["email", "full_name"]}},
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator", "OPTIONS": {"min_length": 12}},
@@ -71,6 +71,7 @@ SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = "DENY"
 DATA_UPLOAD_MAX_MEMORY_SIZE = 32 * 1024 * 1024
 FILE_UPLOAD_MAX_MEMORY_SIZE = 1024 * 1024
+FILE_UPLOAD_HANDLERS = ["marketplace.uploads.BoundedUploadHandler", "django.core.files.uploadhandler.MemoryFileUploadHandler", "django.core.files.uploadhandler.TemporaryFileUploadHandler"]
 DATA_UPLOAD_MAX_NUMBER_FILES = 6
 UPLOAD_MAX_BYTES = min(int(os.getenv("UPLOAD_MAX_BYTES", "5242880")), 5242880)
 UPLOAD_MAX_PIXELS = int(os.getenv("UPLOAD_MAX_PIXELS", "40000000"))

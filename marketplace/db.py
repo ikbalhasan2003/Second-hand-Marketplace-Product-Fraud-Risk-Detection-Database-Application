@@ -1,5 +1,6 @@
 """Small parameterized SQL boundary; never interpolate request values into SQL."""
 from contextlib import contextmanager
+import json
 from django.db import connection, transaction
 
 
@@ -9,7 +10,8 @@ def rows(sql, params=()):
         if cursor.description is None:
             return []
         names = [col[0] for col in cursor.description]
-        return [dict(zip(names, values)) for values in cursor.fetchall()]
+        return [dict(zip(names, [json.loads(value) if column.type_code in (114, 3802) and isinstance(value, str) else value
+                                 for column, value in zip(cursor.description, values)])) for values in cursor.fetchall()]
 
 
 def one(sql, params=()):
