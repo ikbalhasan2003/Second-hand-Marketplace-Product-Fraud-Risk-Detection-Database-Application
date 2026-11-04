@@ -7,7 +7,9 @@ from marketplace.db import one
 
 
 class RateLimited(PermissionDenied):
-    pass
+    def __init__(self, message, retry_after):
+        super().__init__(message)
+        self.retry_after = retry_after
 
 
 def throttle(kind, identity):
@@ -19,4 +21,4 @@ def throttle(kind, identity):
         hits=CASE WHEN app_rate_limits.window_no=excluded.window_no THEN app_rate_limits.hits+1 ELSE 1 END,
         window_no=excluded.window_no RETURNING hits""", [key, window])
     if result["hits"] > count:
-        raise RateLimited("Too many requests. Please wait before trying again.")
+        raise RateLimited("Too many requests. Please wait before trying again.", period - int(time.time()) % period)

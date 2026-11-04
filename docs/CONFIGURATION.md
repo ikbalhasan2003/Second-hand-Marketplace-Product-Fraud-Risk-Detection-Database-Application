@@ -16,7 +16,7 @@ Keep secrets and machine-specific paths in environment configuration. Keep share
 | Report evidence | At most 3; same per-file size/type limits | Private storage, participant/administrator authorization and immutable generated keys. |
 | Image formats | JPEG, PNG, WebP | Decode with Pillow; extension or browser MIME alone is insufficient. Reject malformed, animated, executable and SVG content; do not trust embedded metadata. |
 | Decoded image dimensions | Maximum 40,000,000 pixels; positive width/height | Reject decompression bombs before storing. No minimum resolution that would reject valid small course fixtures. |
-| Total upload request | 33,554,432 bytes (32 MiB) | Enforce actual request bytes at application/server boundaries, including multipart overhead; at most 9 files in a request, with each workflow's stricter count. A forged/missing Content-Length cannot bypass streamed per-file checks. |
+| Total upload request | 33,554,432 bytes (32 MiB) | Bound declared length and actual streamed file bytes in Django, non-file form bytes in Django, and complete multipart body at the deployment proxy. At most 6 files per request, with each workflow's stricter count. |
 | Listing fields | Title 200; description 20,000; location 150 characters | Trim required text and enforce existing SQL limits. Price is positive, finite, at most `9,999,999,999.99`, with two decimal places; original price is optional and nonnegative. |
 | Chat/report fields | Message 4,000; report description 5,000 characters | Nonempty after trimming; escaped on display. |
 | Evidence/history retention | Indefinite during the course demonstration (`0` retention days) | Retain revisions, referenced files, orders, decisions, results and audit records. No P0 automatic evidence deletion. A positive future policy requires a designed reference-aware purge/anonymization workflow; merely setting a number must not erase history. |
@@ -24,7 +24,7 @@ Keep secrets and machine-specific paths in environment configuration. Keep share
 | Unanswered order expiry | 48 hours | Existing database setting and `expire_unanswered_orders`; applies only to `placed` orders. |
 | Current assessment age | 24 hours | Versioned `risk_rulesets.max_assessment_age`; currentness also requires matching revision/context/model/ruleset/schema. |
 | Risk thresholds | Medium starts at 40; High at 75 | Published versioned rules; `0 <= medium_min < high_min <= 100`. |
-| Pagination / polling | 20 rows; chat/risk poll every 5 seconds | Bounded page size and stable ID tiebreaker. Pause overlapping polling and back off on failure. |
+| Pagination / polling | Catalog 12 cards; dashboard/history 20 rows; chat/risk poll every 5 seconds | Bounded page size and stable ID tiebreaker. Pause overlapping polling and back off on failure. |
 | Worker | 120-second lease; heartbeat at most 30 seconds; idle poll 2 seconds | SQL permits positive leases at most 10 minutes. Keep inference outside long-held transactions. |
 | Maintenance | Batch 100; daily reassessment; expire orders every 5 minutes | External scheduler; durable campaigns and idempotent database functions. Retry attempts/backoff remain the existing SQL policy: at most 3 claims and retry delay `2^attempts` seconds. |
 
