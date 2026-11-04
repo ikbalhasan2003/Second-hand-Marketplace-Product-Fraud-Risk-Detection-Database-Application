@@ -1,0 +1,61 @@
+erDiagram
+    users {
+        bigint user_id PK
+        varchar email
+        varchar status
+    }
+    categories {
+        bigint category_id PK
+    }
+    products {
+        bigint product_id PK, FK
+        bigint seller_id FK
+        integer current_revision_no FK
+        bigint context_version
+    }
+    product_revisions {
+        bigint product_id PK, FK
+        integer revision_no PK
+        bigint category_id FK
+        varchar title
+    }
+    product_images {
+        bigint image_id PK
+        bigint product_id FK
+        integer revision_no FK
+    }
+    conversations {
+        bigint conversation_id PK
+        bigint product_id FK
+        bigint buyer_id FK
+    }
+    chat_messages {
+        bigint message_id PK
+        bigint conversation_id FK
+        bigint sender_id FK
+    }
+    transactions {
+        bigint transaction_id PK
+        bigint product_id FK
+        integer revision_no FK
+        bigint buyer_id FK
+        varchar status
+    }
+    order_status_history {
+        bigint event_id PK
+        bigint transaction_id FK
+        bigint actor_id FK
+    }
+    users ||--o{ products : "seller_id"
+    product_revisions o|--o| products : "product_id_current_revision_no"
+    products ||--o{ product_revisions : "product_id"
+    categories ||--o{ product_revisions : "category_id"
+    product_revisions ||--o{ product_images : "product_id_revision_no"
+    products ||--o{ conversations : "product_id"
+    users ||--o{ conversations : "buyer_id"
+    conversations ||--o{ chat_messages : "conversation_id"
+    users ||--o{ chat_messages : "sender_id"
+    users ||--o{ transactions : "buyer_id"
+    product_revisions ||--o{ transactions : "product_id_revision_no"
+    transactions ||--o{ order_status_history : "transaction_id"
+    users o|--o{ order_status_history : "actor_id"

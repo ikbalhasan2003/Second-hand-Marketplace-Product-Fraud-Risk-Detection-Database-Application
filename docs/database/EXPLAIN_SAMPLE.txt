@@ -1,0 +1,114 @@
+ACTUAL POSTGRESQL 18.6 EXPLAIN SAMPLES
+Verified 3 November 2026, Asia/Shanghai.
+Four synthetic products and four jobs after the database regression suite.
+Statements: database/examples.sql #1 (search), #10 (queue lookup).
+These small-fixture measurements are not course-scale performance evidence.
+
+                                                                                                                      QUERY PLAN                                                                                                                      
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=61.30..26469.62 rows=1 width=896) (actual time=0.185..0.211 rows=1.00 loops=1)
+   Buffers: shared hit=35
+   ->  Nested Loop Left Join  (cost=61.30..26469.62 rows=1 width=896) (actual time=0.183..0.210 rows=1.00 loops=1)
+         Join Filter: (p_1.product_id = p.product_id)
+         Rows Removed by Join Filter: 3
+         Buffers: shared hit=35
+         ->  Nested Loop  (cost=0.29..35.38 rows=1 width=834) (actual time=0.069..0.081 rows=1.00 loops=1)
+               Join Filter: (p.seller_id = seller.user_id)
+               Rows Removed by Join Filter: 1
+               Buffers: shared hit=8
+               ->  Nested Loop  (cost=0.29..24.86 rows=1 width=842) (actual time=0.054..0.066 rows=1.00 loops=1)
+                     Buffers: shared hit=7
+                     ->  Index Scan using products_catalog_idx on products p  (cost=0.15..8.17 rows=1 width=28) (actual time=0.020..0.022 rows=2.00 loops=1)
+                           Index Cond: (((availability)::text = 'available'::text) AND ((visibility)::text = 'visible'::text))
+                           Index Searches: 1
+                           Buffers: shared hit=3
+                     ->  Index Scan using product_revisions_pkey on product_revisions v  (cost=0.14..8.42 rows=1 width=830) (actual time=0.020..0.020 rows=0.50 loops=2)
+                           Index Cond: ((product_id = p.product_id) AND (revision_no = p.current_revision_no))
+                           Filter: (to_tsvector('simple'::regconfig, (((title)::text || ' '::text) || description)) @@ '''desk'' & ''lamp'''::tsquery)
+                           Rows Removed by Filter: 0
+                           Index Searches: 2
+                           Buffers: shared hit=4
+               ->  Seq Scan on users seller  (cost=0.00..10.50 rows=1 width=8) (actual time=0.013..0.014 rows=2.00 loops=1)
+                     Filter: (is_active AND ((status)::text = 'active'::text))
+                     Buffers: shared hit=1
+         ->  Nested Loop Left Join  (cost=61.01..26425.02 rows=410 width=106) (actual time=0.102..0.128 rows=4.00 loops=1)
+               Buffers: shared hit=27
+               ->  Nested Loop Left Join  (cost=32.73..13445.33 rows=410 width=58) (actual time=0.030..0.040 rows=4.00 loops=1)
+                     Buffers: shared hit=10
+                     ->  Seq Scan on products p_1  (cost=0.00..14.10 rows=410 width=20) (actual time=0.004..0.004 rows=4.00 loops=1)
+                           Buffers: shared hit=1
+                     ->  Limit  (cost=32.73..32.74 rows=1 width=170) (actual time=0.008..0.008 rows=0.00 loops=4)
+                           Buffers: shared hit=9
+                           ->  Sort  (cost=32.73..32.74 rows=1 width=170) (actual time=0.007..0.008 rows=0.00 loops=4)
+                                 Sort Key: l.risk_id DESC
+                                 Sort Method: quicksort  Memory: 25kB
+                                 Buffers: shared hit=9
+                                 ->  Nested Loop  (cost=0.58..32.72 rows=1 width=170) (actual time=0.002..0.002 rows=0.00 loops=4)
+                                       Join Filter: ((j.ruleset_id = r.ruleset_id) AND (j.feature_schema_id = r.feature_schema_id) AND (j.feature_as_of >= (clock_timestamp() - r.max_assessment_age)))
+                                       Buffers: shared hit=6
+                                       ->  Nested Loop  (cost=0.44..24.54 rows=1 width=70) (actual time=0.002..0.002 rows=0.00 loops=4)
+                                             Buffers: shared hit=6
+                                             ->  Nested Loop  (cost=0.29..16.34 rows=1 width=40) (actual time=0.002..0.002 rows=0.00 loops=4)
+                                                   Join Filter: ((j.model_id = m.model_id) AND (j.feature_schema_id = m.feature_schema_id))
+                                                   Buffers: shared hit=6
+                                                   ->  Index Scan using risk_jobs_bound_key on risk_scan_jobs j  (cost=0.14..8.17 rows=1 width=40) (actual time=0.002..0.002 rows=0.00 loops=4)
+                                                         Index Cond: ((product_id = p_1.product_id) AND (revision_no = p_1.current_revision_no) AND (context_version = p_1.context_version))
+                                                         Filter: (((status)::text = 'succeeded'::text) AND (feature_as_of <= clock_timestamp()))
+                                                         Index Searches: 4
+                                                         Buffers: shared hit=6
+                                                   ->  Index Scan using risk_models_one_active on risk_models m  (cost=0.14..8.16 rows=1 width=16) (never executed)
+                                                         Index Searches: 0
+                                             ->  Index Scan using risk_logs_job_id_key on risk_logs l  (cost=0.15..8.17 rows=1 width=46) (never executed)
+                                                   Index Cond: (job_id = j.job_id)
+                                                   Index Searches: 0
+                                       ->  Index Scan using risk_rulesets_one_active on risk_rulesets r  (cost=0.14..8.16 rows=1 width=32) (never executed)
+                                             Index Searches: 0
+               ->  Limit  (cost=28.28..28.28 rows=1 width=62) (actual time=0.020..0.020 rows=1.00 loops=4)
+                     Buffers: shared hit=17
+                     ->  Sort  (cost=28.28..28.28 rows=1 width=62) (actual time=0.020..0.020 rows=1.00 loops=4)
+                           Sort Key: (CASE WHEN (((j_1.status)::text = 'processing'::text) AND (j_1.lease_expires_at > clock_timestamp())) THEN 0 WHEN ((j_1.status)::text = ANY ('{queued,processing}'::text[])) THEN 1 ELSE 2 END), j_1.job_id DESC
+                           Sort Method: quicksort  Memory: 25kB
+                           Buffers: shared hit=17
+                           ->  Nested Loop Left Join  (cost=0.29..28.27 rows=1 width=62) (actual time=0.010..0.010 rows=1.00 loops=4)
+                                 Join Filter: (r_1.ruleset_id = j_1.ruleset_id)
+                                 Filter: ((j_1.model_id IS NULL) OR ((m_1.model_id IS NOT NULL) AND (r_1.ruleset_id IS NOT NULL)))
+                                 Buffers: shared hit=14
+                                 ->  Nested Loop Left Join  (cost=0.14..20.08 rows=1 width=82) (actual time=0.007..0.007 rows=1.00 loops=4)
+                                       Join Filter: (m_1.model_id = j_1.model_id)
+                                       Buffers: shared hit=8
+                                       ->  Seq Scan on risk_scan_jobs j_1  (cost=0.00..11.91 rows=1 width=74) (actual time=0.005..0.005 rows=1.00 loops=4)
+                                             Filter: ((product_id = p_1.product_id) AND (revision_no = p_1.current_revision_no) AND (context_version = p_1.context_version) AND ((status)::text = ANY ('{queued,processing,failed}'::text[])))
+                                             Rows Removed by Filter: 3
+                                             Buffers: shared hit=4
+                                       ->  Index Scan using risk_models_one_active on risk_models m_1  (cost=0.14..8.16 rows=1 width=8) (actual time=0.001..0.001 rows=0.00 loops=4)
+                                             Index Searches: 4
+                                             Buffers: shared hit=4
+                                 ->  Index Scan using risk_rulesets_one_active on risk_rulesets r_1  (cost=0.14..8.16 rows=1 width=8) (actual time=0.003..0.003 rows=0.00 loops=4)
+                                       Index Searches: 4
+                                       Buffers: shared hit=6
+               SubPlan 2
+                 ->  Hash Join  (cost=12.03..28.98 rows=550 width=8) (never executed)
+                       Hash Cond: (l_1.job_id = j_2.job_id)
+                       ->  Seq Scan on risk_logs l_1  (cost=0.00..15.50 rows=550 width=8) (never executed)
+                       ->  Hash  (cost=10.90..10.90 rows=90 width=16) (never executed)
+                             ->  Seq Scan on risk_scan_jobs j_2  (cost=0.00..10.90 rows=90 width=16) (never executed)
+ Planning:
+   Buffers: shared hit=1020
+ Planning Time: 14.075 ms
+ Execution Time: 0.372 ms
+(90 rows)
+
+
+                                                                    QUERY PLAN                                                                     
+---------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.14..8.16 rows=1 width=16) (actual time=0.042..0.047 rows=4.00 loops=1)
+   Buffers: shared hit=2
+   ->  Index Only Scan using risk_jobs_queue_idx on risk_scan_jobs  (cost=0.14..8.16 rows=1 width=16) (actual time=0.041..0.047 rows=4.00 loops=1)
+         Filter: (retry_at <= clock_timestamp())
+         Heap Fetches: 34
+         Index Searches: 1
+         Buffers: shared hit=2
+ Planning Time: 0.057 ms
+ Execution Time: 0.056 ms
+(9 rows)
+

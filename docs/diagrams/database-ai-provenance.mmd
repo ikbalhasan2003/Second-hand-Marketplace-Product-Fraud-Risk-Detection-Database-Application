@@ -1,0 +1,93 @@
+erDiagram
+    users {
+        bigint user_id PK
+        varchar email
+        varchar status
+    }
+    product_revisions {
+        bigint product_id PK, FK
+        integer revision_no PK
+        bigint category_id FK
+        varchar title
+    }
+    moderation_reviews {
+        bigint review_id PK
+        bigint product_id FK
+        integer revision_no FK
+        bigint report_id FK
+        bigint reviewer_id FK
+        bigint supersedes_review_id FK
+    }
+    admin_audit_logs {
+        bigint audit_id PK
+        bigint admin_id FK
+        bigint user_id FK
+        bigint product_id FK
+        bigint report_id FK
+        bigint review_id FK
+        bigint transaction_id FK
+        bigint model_id FK
+        bigint ruleset_id FK
+        bigint dataset_id FK
+    }
+    feature_schemas {
+        bigint feature_schema_id PK
+        varchar version
+    }
+    dataset_sources {
+        bigint source_id PK
+    }
+    dataset_versions {
+        bigint dataset_id PK
+        varchar version
+        bigint feature_schema_id FK
+        varchar state
+        bigint created_by FK
+    }
+    dataset_split_groups {
+        bigint split_group_id PK
+        bigint dataset_id PK, FK
+        varchar partition
+    }
+    dataset_records {
+        bigint record_id PK
+        bigint dataset_id FK
+        bigint source_id FK
+        bigint split_group_id FK
+        bigint product_id FK
+        integer revision_no FK
+        bigint review_id FK
+    }
+    risk_models {
+        bigint model_id PK
+        varchar version
+        bigint feature_schema_id FK
+        bigint dataset_id FK
+        varchar state
+        bigint registered_by FK
+    }
+    model_evaluations {
+        bigint evaluation_id PK
+        bigint model_id FK
+        varchar partition
+    }
+    users ||--o{ moderation_reviews : "reviewer_id"
+    product_revisions ||--o{ moderation_reviews : "product_id_revision_no"
+    moderation_reviews o|--o| moderation_reviews : "supersedes_review_id_product_id_revision_no"
+    users ||--o{ admin_audit_logs : "admin_id"
+    users o|--o{ admin_audit_logs : "user_id"
+    moderation_reviews o|--o{ admin_audit_logs : "review_id"
+    risk_models o|--o{ admin_audit_logs : "model_id"
+    dataset_versions o|--o{ admin_audit_logs : "dataset_id"
+    feature_schemas ||--o{ dataset_versions : "feature_schema_id"
+    users ||--o{ dataset_versions : "created_by"
+    dataset_versions ||--o{ dataset_split_groups : "dataset_id"
+    dataset_versions ||--o{ dataset_records : "dataset_id"
+    dataset_sources ||--o{ dataset_records : "source_id"
+    moderation_reviews o|--o{ dataset_records : "review_id"
+    dataset_split_groups ||--o{ dataset_records : "dataset_id_split_group_id"
+    product_revisions o|--o{ dataset_records : "product_id_revision_no"
+    feature_schemas ||--o{ risk_models : "feature_schema_id"
+    dataset_versions ||--o{ risk_models : "dataset_id"
+    users ||--o{ risk_models : "registered_by"
+    risk_models ||--o{ model_evaluations : "model_id"

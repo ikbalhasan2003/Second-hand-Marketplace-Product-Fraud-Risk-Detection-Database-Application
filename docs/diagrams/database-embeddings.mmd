@@ -1,0 +1,29 @@
+erDiagram
+    users {
+        bigint user_id PK
+        varchar email
+        varchar status
+    }
+    moderation_reviews {
+        bigint review_id PK
+        bigint product_id FK
+        integer revision_no FK
+        bigint report_id FK
+        bigint reviewer_id FK
+        bigint supersedes_review_id FK
+    }
+    embedding_models {
+        bigint embedding_model_id PK
+        varchar version
+        bigint registered_by FK
+    }
+    review_embedding {
+        bigint review_embedding_id PK
+        bigint review_id FK
+        bigint embedding_model_id FK
+    }
+    users ||--o{ moderation_reviews : "reviewer_id"
+    moderation_reviews o|--o| moderation_reviews : "supersedes_review_id_product_id_revision_no"
+    users ||--o{ embedding_models : "registered_by"
+    moderation_reviews ||--o{ review_embedding : "review_id"
+    embedding_models ||--o{ review_embedding : "embedding_model_id"

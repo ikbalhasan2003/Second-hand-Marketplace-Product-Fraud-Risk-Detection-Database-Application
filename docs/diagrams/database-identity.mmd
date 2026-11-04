@@ -1,0 +1,44 @@
+erDiagram
+    users {
+        bigint user_id PK
+        varchar email
+        varchar status
+    }
+    auth_group {
+        integer id PK
+    }
+    users_groups {
+        bigint id PK
+        bigint user_id FK
+        integer group_id FK
+    }
+    django_content_type {
+        integer id PK
+    }
+    auth_permission {
+        integer id PK
+        integer content_type_id FK
+    }
+    auth_group_permissions {
+        bigint id PK
+        integer group_id FK
+        integer permission_id FK
+    }
+    users_user_permissions {
+        bigint id PK
+        bigint user_id FK
+        integer permission_id FK
+    }
+    django_session {
+        varchar session_key PK
+    }
+    marketplace_settings {
+        boolean singleton PK
+    }
+    users ||--o{ users_groups : "user_id"
+    auth_group ||--o{ users_groups : "group_id"
+    django_content_type ||--o{ auth_permission : "content_type_id"
+    auth_group ||--o{ auth_group_permissions : "group_id"
+    auth_permission ||--o{ auth_group_permissions : "permission_id"
+    users ||--o{ users_user_permissions : "user_id"
+    auth_permission ||--o{ users_user_permissions : "permission_id"
