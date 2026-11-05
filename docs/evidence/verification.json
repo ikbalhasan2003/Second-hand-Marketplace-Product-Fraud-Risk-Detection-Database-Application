@@ -1,0 +1,211 @@
+{
+  "recorded_at_local": "2026-11-05 01:17:31 +0800 (Asia/Shanghai)",
+  "performance_restore_run_id": "20261104171731_d5fe5630",
+  "checks": [
+    {
+      "command": "python manage.py check",
+      "exit_code": 0,
+      "result": "No issues"
+    },
+    {
+      "command": "python manage.py makemigrations --check --dry-run",
+      "exit_code": 0,
+      "result": "No changes detected; confirmed against the restored migrated database"
+    },
+    {
+      "command": "python -m pytest -q",
+      "exit_code": 0,
+      "passed": 68,
+      "duration_seconds": 110.46
+    },
+    {
+      "command": "python -m pytest tests/integration/test_delivery.py -q",
+      "exit_code": 0,
+      "passed": 1,
+      "duration_seconds": 1.13
+    },
+    {
+      "command": "python -m ruff check .",
+      "exit_code": 0,
+      "result": "All checks passed"
+    },
+    {
+      "command": "python scripts/verify_delivery.py",
+      "exit_code": 0,
+      "passed": true
+    }
+  ],
+  "browser": {
+    "engine": "Microsoft Edge (Playwright/Chromium)",
+    "page_groups": 17,
+    "viewport_widths": [
+      1440,
+      360
+    ],
+    "checks": [
+      "labels",
+      "horizontal page overflow",
+      "Enter/Escape dialog and focus restoration",
+      "poll failure/recovery",
+      "draft recovery",
+      "scroll preservation",
+      "stable-ID message deduplication",
+      "older-message loading",
+      "upload feedback"
+    ],
+    "screenshots": ".local/ui-qa/ (ignored local inspection artifacts)"
+  },
+  "acceptance": [
+    {
+      "id": "AC-01",
+      "scope": "Fresh PostgreSQL installation/schema",
+      "evidence": "test_schema.py; prior direct SQL catalog/dictionary evidence",
+      "result": "verified by scoped local automated evidence"
+    },
+    {
+      "id": "AC-02",
+      "scope": "Identity and authorization",
+      "evidence": "test_accounts.py; test_admin.py restricted web-role HTTP",
+      "result": "verified by scoped local automated evidence"
+    },
+    {
+      "id": "AC-03",
+      "scope": "Immutable publication and revisions",
+      "evidence": "test_seller.py; test_uploads.py",
+      "result": "verified by scoped local automated evidence"
+    },
+    {
+      "id": "AC-04",
+      "scope": "Visible search and current Low filtering",
+      "evidence": "test_buyer.py; test_interface.py; 10,000-listing measurement",
+      "result": "verified by scoped local automated evidence"
+    },
+    {
+      "id": "AC-05",
+      "scope": "Worker unavailable/recovery",
+      "evidence": "test_worker.py actual unbound/publication/worker inference",
+      "result": "verified by scoped local automated evidence"
+    },
+    {
+      "id": "AC-06",
+      "scope": "Repeated execution and fencing",
+      "evidence": "test_worker.py real PostgreSQL lease/token/retry checks",
+      "result": "verified by scoped local automated evidence"
+    },
+    {
+      "id": "AC-07",
+      "scope": "Late results and freshness",
+      "evidence": "test_worker.py; reused direct SQL configuration/currentness tests",
+      "result": "verified by scoped local automated evidence"
+    },
+    {
+      "id": "AC-08",
+      "scope": "Explicit failed/unassessed display",
+      "evidence": "test_interface.py unfinished states; test_worker.py terminal failures",
+      "result": "verified by scoped local automated evidence"
+    },
+    {
+      "id": "AC-09",
+      "scope": "Competing and repeated purchases",
+      "evidence": "test_buyer.py request replay; reused two-connection database purchase race",
+      "result": "verified by scoped local automated evidence"
+    },
+    {
+      "id": "AC-10",
+      "scope": "Order state machine/history",
+      "evidence": "test_buyer.py; test_delivery.py; reused direct SQL invalid-transition tests",
+      "result": "verified by scoped local automated evidence"
+    },
+    {
+      "id": "AC-11",
+      "scope": "Cancellation, removal and final sale",
+      "evidence": "test_buyer.py; test_seller.py; reused direct SQL sale constraints",
+      "result": "verified by scoped local automated evidence"
+    },
+    {
+      "id": "AC-12",
+      "scope": "Conversation privacy and receipts",
+      "evidence": "test_buyer.py; test_interface.py polling/deduplication; test_delivery.py",
+      "result": "verified by scoped local automated evidence"
+    },
+    {
+      "id": "AC-13",
+      "scope": "Private decoded evidence",
+      "evidence": "test_uploads.py; test_evidence.py; restored restricted HTTP checks",
+      "result": "verified by scoped local automated evidence"
+    },
+    {
+      "id": "AC-14",
+      "scope": "Canonical labels and corrections",
+      "evidence": "test_admin.py concurrent correction/unresolved exclusion",
+      "result": "verified by scoped local automated evidence"
+    },
+    {
+      "id": "AC-15",
+      "scope": "Audit atomicity",
+      "evidence": "test_admin.py forced audit failures for moderation, correction and dispute",
+      "result": "verified by scoped local automated evidence"
+    },
+    {
+      "id": "AC-16",
+      "scope": "Saved-model reproducibility",
+      "evidence": "test_ml.py; delivery.json regenerated 5,000 records, retrained predictions/evaluation",
+      "result": "verified by scoped local automated evidence"
+    },
+    {
+      "id": "AC-17",
+      "scope": "Dataset provenance and leakage",
+      "evidence": "test_ml.py; test_worker.py point-in-time selection; manifest checks",
+      "result": "verified by scoped local automated evidence"
+    },
+    {
+      "id": "AC-18",
+      "scope": "Three-model measured evaluation",
+      "evidence": "delivery.json reproducibility.test_metrics; ML_EVALUATION.json synthetic-only metrics",
+      "result": "verified by scoped local automated evidence"
+    },
+    {
+      "id": "AC-19",
+      "scope": "Audited configuration/rescans",
+      "evidence": "test_admin.py real artifact activation; test_worker.py maintenance; test_interface.py rescan receipts",
+      "result": "verified by scoped local automated evidence"
+    },
+    {
+      "id": "AC-20",
+      "scope": "Coordinated recovery and local delivery",
+      "evidence": "delivery.json restore all checks; SETUP.md; DEMO.md; test_demo.py",
+      "result": "verified by scoped local automated evidence"
+    },
+    {
+      "id": "AC-21",
+      "scope": "Three application entry points",
+      "evidence": "test_interface.py all 17 groups in Edge; account/admin route tests",
+      "result": "verified by scoped local automated evidence"
+    },
+    {
+      "id": "AC-22",
+      "scope": "Application-role isolation",
+      "evidence": "test_accounts.py; test_admin.py; test_seller.py ownership checks",
+      "result": "verified by scoped local automated evidence"
+    },
+    {
+      "id": "AC-23",
+      "scope": "Continuous cross-application workflow",
+      "evidence": "test_delivery.py one continuous three-session HTTP scenario",
+      "result": "verified by scoped local automated evidence"
+    }
+  ],
+  "reused_evidence": {
+    "path": "docs/database/VERIFICATION.md",
+    "executed_local_date": "2026-11-03",
+    "direct_database_tests": 25,
+    "rerun_this_delivery": false
+  },
+  "outstanding": [
+    "Human-operated full three-profile presentation has not been performed; manual sign-off for AC-20/AC-23 remains open.",
+    "No production TLS/proxy/scheduler deployment or online point-in-time recovery has been verified.",
+    "No real-world fraud accuracy or calibration is measured; all training and workloads are synthetic.",
+    "Optional pgvector/P2 installation is not verified and is outside P0."
+  ],
+  "test_accounting": "68-test full run plus one newly added focused cross-application test; not a claim that a 69-test full run was executed."
+}

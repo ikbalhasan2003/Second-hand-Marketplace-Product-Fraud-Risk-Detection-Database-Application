@@ -1,0 +1,1 @@
+{% if receipt %}<p class="audit-receipt"><a href="/admin-app/audit-log/{{ receipt.audit_id }}/">View audit event #{{ receipt.audit_id }}</a>{% if receipt.occurred_at %} &middot; {{ receipt.occurred_at|date:'Y-m-d H:i:s T' }}{% endif %}</p>{% endif %}

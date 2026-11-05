@@ -1,4 +1,1 @@
-{% if product.assessment_state == 'ready' %}<span class="badge text-bg-secondary">{{ product.risk_level|title }} risk · {{ product.risk_score }}/100</span>
-<span>Assessed {{ product.predicted_at|date:'Y-m-d H:i T' }}</span>
-{% else %}<span class="badge text-bg-light">Assessment {{ product.assessment_state|default:'pending' }}</span>{% endif %}
-<p class="small text-muted">Risk indicators are contextual signals. They do not establish fraud or guarantee a safe transaction.</p>
+<div class="assessment-refresh"><div data-risk-refresh="/seller-app/listings/{{ product.product_id }}/assessment/?format=fragment">{% include 'seller/risk_content.html' %}</div><p data-risk-status role="status" aria-live="polite"></p></div>

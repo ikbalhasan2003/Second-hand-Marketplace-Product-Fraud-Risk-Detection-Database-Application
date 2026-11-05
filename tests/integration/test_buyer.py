@@ -66,6 +66,16 @@ def test_chat_participants_and_recipient_only_read(client, market):
     assert one("SELECT read_at FROM chat_messages WHERE message_id=%s", [message["message_id"]])["read_at"] is not None
 
 
+def test_chat_rejects_out_of_range_message_ids(client, market):
+    client.force_login(market["buyer"])
+    url = client.post(f"/buyer-app/listings/{market['product']}/conversations/").url
+    too_large = str(2**63)
+    for cursor in ("after_id", "before_id"):
+        assert client.get(url + "messages/", {cursor: too_large}).status_code == 400
+    assert client.post(url + "read/", {"through_id": too_large}).status_code == 400
+    assert client.post(url + "read/", {"message_ids": too_large}).status_code == 400
+
+
 def test_blocked_order_obligations_and_removed_visibility(client, market):
     order = place_order(market["buyer"], market["product"], 1, uuid4())
     with actor_transaction(market["admin"], "Synthetic restriction with existing agreement"):

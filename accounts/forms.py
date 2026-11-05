@@ -4,11 +4,11 @@ from .models import User
 
 
 class RegistrationForm(forms.Form):
-    email = forms.EmailField(max_length=254)
-    full_name = forms.CharField(max_length=150)
+    email = forms.EmailField(max_length=254, widget=forms.EmailInput(attrs={"autocomplete": "email"}))
+    full_name = forms.CharField(max_length=150, widget=forms.TextInput(attrs={"autocomplete": "name"}))
     location = forms.CharField(max_length=150, required=False)
-    password = forms.CharField(widget=forms.PasswordInput)
-    password_confirm = forms.CharField(widget=forms.PasswordInput)
+    password = forms.CharField(widget=forms.PasswordInput(attrs={"autocomplete": "new-password"}), help_text="At least 12 characters; avoid common passwords and personal details.")
+    password_confirm = forms.CharField(widget=forms.PasswordInput(attrs={"autocomplete": "new-password"}))
 
     def clean_email(self):
         email = self.cleaned_data["email"].strip().casefold()
@@ -26,5 +26,5 @@ class RegistrationForm(forms.Form):
 
 
 class LoginForm(forms.Form):
-    email = forms.EmailField()
-    password = forms.CharField(widget=forms.PasswordInput)
+    email = forms.EmailField(widget=forms.EmailInput(attrs={"autocomplete": "username"}))
+    password = forms.CharField(widget=forms.PasswordInput(attrs={"autocomplete": "current-password"}))

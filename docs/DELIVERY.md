@@ -47,4 +47,59 @@ This mapping identifies the supporting checks. It does not silently mark every U
 
 ## Remaining verification boundaries
 
-Public deployment, TLS/proxy behavior, a hosted scheduler/service supervisor and an online restore exercise are outside the measured local run. Manual responsive/keyboard/browser testing must be recorded separately. Synthetic-only training has no real-world fraud accuracy or probability calibration evidence. Any unmet measured target must retain its actual result and corrective action in the committed evidence.
+Public deployment, TLS/proxy behavior, a hosted scheduler/service supervisor and an online restore exercise are outside the measured local run. Automated Edge layout/keyboard/polling checks and mobile screenshot inspection are recorded below; a human-operated multi-profile demonstration remains separate. Synthetic-only training has no real-world fraud accuracy or probability calibration evidence. Any unmet measured target must retain its actual result and corrective action in the committed evidence.
+
+## Final executed verification
+
+Verified locally at **2026-11-05 01:17:31 +0800 (Asia/Shanghai)**. The performance/recovery run is `20261104171731_d5fe5630`; [delivery.json](evidence/delivery.json) records the environment, working-tree source hashes, isolated database names, storage checksums and actual measurements. The tree contains uncommitted work, so the recorded Git HEAD alone is not the tested source identity. [verification.json](evidence/verification.json) records test accounting and the acceptance map.
+
+| Executed check | Actual result |
+| --- | --- |
+| Django system checks | No issues |
+| Migration/model drift | No changes detected; confirmed against the restored migrated database |
+| Full application/unit/worker/browser suite | 68 passed in 110.46 seconds |
+| Newly added continuous cross-app acceptance scenario | 1 passed in 1.13 seconds, executed separately after the full run |
+| Ruff | All checks passed |
+| Search: 10,000 listings, 10 clients, 100 requests | p95 0.270 s against <=1 s; all HTTP 200 |
+| Warm inference: one worker, 20 waiting jobs | p95 1.235 s against <=15 s |
+| Coordinated isolated restore | All 33 recorded checks passed; public/private/artifact checksums and restricted HTTP ownership verified |
+| Reproducibility | 5,000 generated records, every inference probability and complete evaluation identical; pipeline bytes also identical |
+| Optional browser verification | Executed in Edge: all 17 groups at 1440px/360px; labels, overflow, keyboard dialog/focus, polling/drafts/scroll, deduplication and upload feedback passed |
+
+Mobile catalog and model-management screenshots were inspected from ignored `.local/ui-qa/`. The full suite and focused test are separate executions; the total is not described as a 69-test full-suite run. The initial migration-drift command named an absent disposable database and warned that history could not be checked; it was rerun successfully against the migrated restore target.
+
+### Criterion-by-criterion assessment
+
+Each row means verified within the stated local automated scope, rather than a claim about public deployment or real fraud outcomes. Prior standalone database evidence is explicitly reused from [database/VERIFICATION.md](database/VERIFICATION.md): 25 tests and process grants/privilege checks dated 3 November 2026. That historical direct SQL run was not rerun in this delivery; current Django/PostgreSQL, restricted-role, worker and restore checks were executed again.
+
+| Criterion | Local result | Supporting evidence |
+| --- | --- | --- |
+| AC-01: Fresh PostgreSQL installation/schema | Automated checks passed | test_schema.py; prior direct SQL catalog/dictionary evidence |
+| AC-02: Identity and authorization | Automated checks passed | test_accounts.py; test_admin.py restricted web-role HTTP |
+| AC-03: Immutable publication and revisions | Automated checks passed | test_seller.py; test_uploads.py |
+| AC-04: Visible search and current Low filtering | Automated checks passed | test_buyer.py; test_interface.py; 10,000-listing measurement |
+| AC-05: Worker unavailable/recovery | Automated checks passed | test_worker.py actual unbound/publication/worker inference |
+| AC-06: Repeated execution and fencing | Automated checks passed | test_worker.py real PostgreSQL lease/token/retry checks |
+| AC-07: Late results and freshness | Automated checks passed | test_worker.py; reused direct SQL configuration/currentness tests |
+| AC-08: Explicit failed/unassessed display | Automated checks passed | test_interface.py unfinished states; test_worker.py terminal failures |
+| AC-09: Competing and repeated purchases | Automated checks passed | test_buyer.py request replay; reused two-connection database purchase race |
+| AC-10: Order state machine/history | Automated checks passed | test_buyer.py; test_delivery.py; reused direct SQL invalid-transition tests |
+| AC-11: Cancellation, removal and final sale | Automated checks passed | test_buyer.py; test_seller.py; reused direct SQL sale constraints |
+| AC-12: Conversation privacy and receipts | Automated checks passed | test_buyer.py; test_interface.py polling/deduplication; test_delivery.py |
+| AC-13: Private decoded evidence | Automated checks passed | test_uploads.py; test_evidence.py; restored restricted HTTP checks |
+| AC-14: Canonical labels and corrections | Automated checks passed | test_admin.py concurrent correction/unresolved exclusion |
+| AC-15: Audit atomicity | Automated checks passed | test_admin.py forced audit failures for moderation, correction and dispute |
+| AC-16: Saved-model reproducibility | Automated checks passed | test_ml.py; delivery.json regenerated 5,000 records, retrained predictions/evaluation |
+| AC-17: Dataset provenance and leakage | Automated checks passed | test_ml.py; test_worker.py point-in-time selection; manifest checks |
+| AC-18: Three-model measured evaluation | Automated checks passed | delivery.json reproducibility.test_metrics; ML_EVALUATION.json synthetic-only metrics |
+| AC-19: Audited configuration/rescans | Automated checks passed | test_admin.py real artifact activation; test_worker.py maintenance; test_interface.py rescan receipts |
+| AC-20: Coordinated recovery and local delivery | Automated checks passed | delivery.json restore all checks; SETUP.md; DEMO.md; test_demo.py |
+| AC-21: Three application entry points | Automated checks passed | test_interface.py all 17 groups in Edge; account/admin route tests |
+| AC-22: Application-role isolation | Automated checks passed | test_accounts.py; test_admin.py; test_seller.py ownership checks |
+| AC-23: Continuous cross-application workflow | Automated checks passed | test_delivery.py one continuous three-session HTTP scenario |
+
+### Open acceptance and delivery boundaries
+
+No failing automated P0 criterion or measured performance target remains in the executed scope. **Human presentation sign-off for AC-20 and AC-23 remains open:** the core flow has been rehearsed through independent HTTP sessions, and restored pages were exercised under a restricted web login, but a person has not yet completed and recorded the entire three-browser-profile walkthrough. [DEMO.md](DEMO.md) provides the exact rehearsal and keyboard/mobile checklist.
+
+Production TLS/reverse-proxy behavior, service supervision, hosted scheduling, online point-in-time recovery and optional P2 pgvector installation remain unverified. Model metrics remain synthetic-only, with no real-world accuracy/calibration claim. These are explicit boundaries, not silently passed requirements. Generated databases and recovery files are retained under the run workspace for inspection; no existing application database was reset.

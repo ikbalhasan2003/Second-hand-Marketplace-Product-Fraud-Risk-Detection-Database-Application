@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 {% block content %}
-<nav aria-label="Administrator navigation" class="d-flex flex-wrap gap-3 border-bottom pb-3 mb-4"><a href="/admin-app/">Overview</a><a href="/admin-app/review-queue/">Review queue</a><a href="/admin-app/models/">Models and rules</a><a href="/admin-app/audit-log/">Audit log</a><a href="/admin-app/exports/">Datasets</a></nav>
+
 {% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
 {% block admin_content %}{% endblock %}
 {% endblock %}

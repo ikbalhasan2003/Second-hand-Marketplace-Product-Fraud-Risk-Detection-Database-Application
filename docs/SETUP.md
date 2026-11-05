@@ -34,3 +34,11 @@ python -m ruff check .
 ```
 
 Integration tests require PostgreSQL and permission to create a disposable test database. SQLite is deliberately unsupported. Do not run production with migration/owner credentials. Database regression scripts use their own **empty** disposable database, distinct from the application database.
+
+## Prepared course demonstration
+
+From the repository root, `scripts/setup_windows.ps1 -SeedDemo` installs the pinned environment, applies Django-owned migrations and provisions separate synthetic Buyer/Seller/Admin accounts. Configure its generated private `.env` first if database access is not already configured. Credentials are written only to ignored `runtime/DEMO_CREDENTIALS.txt`; do not copy them into a report or commit them.
+
+Run `scripts/start_demo.ps1` for the web application, or `scripts/start_demo.ps1 -WithWorker` after configuring the separate worker database login and registering/activating the trusted model. Without an active compatible model, pending assessments are expected. Use `scripts/stop_demo.ps1` to stop only the saved matching demo processes. These scripts start local background processes, not production services or an OS scheduler. Follow [DEMO.md](DEMO.md) for the cross-role walkthrough and [DELIVERY.md](DELIVERY.md) for measured acceptance evidence.
+
+Optional browser checks require `python -m pip install -r requirements/browser-lock.txt` and installed Microsoft Edge. They render Django responses with local assets at 1440px and 360px, exercise keyboard/dialog/polling/upload behavior, and write mobile screenshots under ignored `.local/ui-qa/`. An absent optional dependency skips this browser check; a skipped check must not be reported as executed.

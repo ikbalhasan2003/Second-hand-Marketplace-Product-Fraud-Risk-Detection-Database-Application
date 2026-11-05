@@ -1,0 +1,7 @@
+<nav aria-label="Main navigation" class="container d-flex flex-wrap gap-3 align-items-center py-3">
+<a class="brand" href="/{{ shell }}-app/">Secondhand<span>Market</span></a>
+{% if shell == 'seller' %}<a href="/seller-app/">Dashboard</a><a href="/seller-app/listings/">Listings</a><a href="/seller-app/orders/">Sales</a><a href="/seller-app/conversations/">Messages</a>
+{% elif shell == 'admin' %}<a href="/admin-app/">Overview</a><a href="/admin-app/review-queue/">Review queue</a><a href="/admin-app/models/">Models &amp; rules</a><a href="/admin-app/audit-log/">Audit log</a><a href="/admin-app/exports/">Export dataset</a>
+{% else %}<a href="/buyer-app/listings/">Browse</a>{% if can_buy %}<a href="/buyer-app/orders/">My orders</a><a href="/buyer-app/conversations/">Messages</a><a href="/buyer-app/reports/">My reports</a>{% endif %}{% endif %}
+{% if user.is_authenticated %}<a href="/account/">Account</a><details><summary>Switch app</summary><div class="d-flex flex-wrap gap-3">{% if can_buy %}<a href="/buyer-app/">Buyer app</a>{% endif %}{% if can_sell %}<a href="/seller-app/">Seller app</a>{% endif %}{% if can_admin %}<a href="/admin-app/">Admin app</a>{% endif %}</div></details><form method="post" action="/logout/">{% csrf_token %}<button class="btn btn-outline-secondary btn-sm">Sign out</button></form>
+{% else %}<a href="/{{ shell }}-app/login/">Sign in</a>{% if shell != 'admin' %}<a href="/{{ shell }}-app/register/">Register</a>{% endif %}{% endif %}</nav>

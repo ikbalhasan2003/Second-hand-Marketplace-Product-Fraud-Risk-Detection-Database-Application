@@ -1,13 +1,15 @@
 """Admin HTTP/service integrity and real PostgreSQL web-role checks."""
 from decimal import Decimal
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 import re
+from threading import Barrier
 from uuid import uuid4
 
 import pytest
 from django.contrib.auth.models import Group
 from django.core.exceptions import ValidationError
-from django.db import DatabaseError, connection, transaction
+from django.db import DatabaseError, close_old_connections, connection, transaction
 from django.test import Client
 
 from accounts.models import User
@@ -49,6 +51,50 @@ def test_all_admin_pages_require_administrator_and_render_actual_empty_state(cli
         assert client.get(path).status_code == 200
 
 
+@pytest.mark.parametrize("identity", ["buyer", "seller", "blocked_admin"])
+def test_privileged_posts_reject_nonadministrators_and_blocked_admins(client, case_market, identity):
+    user = case_market["admin" if identity == "blocked_admin" else identity]
+    if identity == "blocked_admin":
+        operator = User.objects.create_user("operator@example.invalid", full_name="Operator")
+        operator.groups.add(Group.objects.get(name="administrator"))
+        with actor_transaction(operator, "Restrict test administrator"):
+            rows("UPDATE users SET status='blocked' WHERE user_id=%s", [user.pk])
+    client.force_login(user)
+    product = case_market["product"]
+    for path in (f"/admin-app/cases/{product}/", "/admin-app/models/", "/admin-app/rulesets/new/",
+                 "/admin-app/exports/", "/admin-app/exports/1/download/", "/admin-app/disputes/1/"):
+        assert client.post(path, {"operation": "decision", "revision_no": 1, "verdict": "fraud",
+                                  "reason": "Unauthorized attempt", "evidence": "Test"}).status_code == 403
+    assert one("SELECT count(*) AS n FROM moderation_reviews WHERE product_id=%s", [product])["n"] == 0
+
+
+def test_admin_private_pages_prevent_caching(client, case_market):
+    client.force_login(case_market["admin"])
+    for path in ("/admin-app/", "/admin-app/review-queue/", "/admin-app/exports/",
+                 f"/admin-app/cases/{case_market['product']}/"):
+        response = client.get(path)
+        assert response.status_code == 200
+        assert "no-store" in response["Cache-Control"]
+        assert "private" in response["Cache-Control"]
+
+
+def test_queue_deduplicates_reports_and_retains_dispute_filter_when_paging(client, case_market):
+    product = case_market["product"]
+    with actor_transaction(case_market["buyer"]):
+        for _ in range(2):
+            rows("""INSERT INTO fraud_reports(product_id,revision_no,reporter_id,reason_code,comment)
+                VALUES(%s,1,%s,'other','Synthetic concern')""", [product, case_market["buyer"].pk])
+    client.force_login(case_market["admin"])
+    response = client.get("/admin-app/review-queue/?source=reports")
+    cases = response.context["cases"]
+    assert len(cases) == 1 and cases[0]["open_report_count"] == 2
+    assert cases[0]["reported_revision_nos"] == [1]
+    response = client.get("/admin-app/review-queue/?type=order-dispute&dispute_page=2")
+    assert not response.context["cases"]
+    assert "type=order-dispute" in response.context["query"]
+    assert response.context["dispute_page"].paginator.per_page == 25
+
+
 def test_canonical_correction_conflict_and_unresolved_export_exclusion(client, case_market):
     admin, product = case_market["admin"], case_market["product"]
     audit = record_decision(admin, product, 1, "fraud", "Evidence supports the synthetic test decision", "Reviewed test evidence")
@@ -73,6 +119,51 @@ def test_audit_failure_rolls_back_privileged_http_mutation(client, case_market):
     assert response.status_code == 409
     assert one("SELECT visibility FROM products WHERE product_id=%s", [case_market["product"]])["visibility"] == "visible"
     assert one("SELECT count(*) AS n FROM admin_audit_logs")["n"] == 0
+
+
+def test_decision_audit_failure_rolls_back_chain_and_label(case_market):
+    admin, product = case_market["admin"], case_market["product"]
+    record_decision(admin, product, 1, "legitimate", "Reviewed synthetic listing", "Synthetic evidence")
+    head = one("SELECT review_id FROM eligible_training_labels WHERE product_id=%s", [product])["review_id"]
+    with connection.cursor() as cursor:
+        cursor.execute("""CREATE FUNCTION reject_correction_audit() RETURNS trigger LANGUAGE plpgsql AS $$
+            BEGIN RAISE EXCEPTION 'Synthetic audit failure'; END $$;
+            CREATE TRIGGER correction_audit_failure BEFORE INSERT ON admin_audit_logs
+            FOR EACH ROW EXECUTE FUNCTION reject_correction_audit();""")
+    with pytest.raises(DatabaseError):
+        record_decision(admin, product, 1, "unresolved", "Corrected evidence", "Inconclusive evidence", expected_head=head)
+    assert one("SELECT review_id FROM eligible_training_labels WHERE product_id=%s", [product])["review_id"] == head
+    assert one("SELECT count(*) AS n FROM moderation_reviews WHERE product_id=%s", [product])["n"] == 1
+
+
+@pytest.mark.parametrize("audit_failure", [False, True])
+def test_dispute_resolution_requires_evidence_and_commits_audit_atomically(client, case_market, audit_failure):
+    from marketplace.services.orders import place_order, transition_order
+
+    buyer, seller, admin = (case_market[key] for key in ("buyer", "seller", "admin"))
+    product = case_market["product"]
+    order = place_order(buyer, product, 1, uuid4())
+    transition_order(seller, order, "accepted", "Accept synthetic order", "placed")
+    transition_order(buyer, order, "disputed", "Synthetic delivery dispute", "accepted")
+    client.force_login(admin)
+    url = f"/admin-app/disputes/{order}/"
+    payload = {"expected_status": "disputed", "status": "cancelled", "reason": "Review completed"}
+    assert client.post(url, payload).status_code == 409
+    assert one("SELECT status FROM transactions WHERE transaction_id=%s", [order])["status"] == "disputed"
+    events = one("SELECT count(*) AS n FROM order_status_history WHERE transaction_id=%s", [order])["n"]
+    if audit_failure:
+        with connection.cursor() as cursor:
+            cursor.execute("""CREATE FUNCTION reject_dispute_audit() RETURNS trigger LANGUAGE plpgsql AS $$
+                BEGIN RAISE EXCEPTION 'Synthetic dispute audit failure'; END $$;
+                CREATE TRIGGER dispute_audit_failure BEFORE INSERT ON admin_audit_logs
+                FOR EACH ROW EXECUTE FUNCTION reject_dispute_audit();""")
+    response = client.post(url, payload | {"evidence": "Reviewed the synthetic delivery evidence"})
+    assert response.status_code == (409 if audit_failure else 302)
+    assert one("SELECT status FROM transactions WHERE transaction_id=%s", [order])["status"] == ("disputed" if audit_failure else "cancelled")
+    assert one("SELECT availability FROM products WHERE product_id=%s", [product])["availability"] == ("reserved" if audit_failure else "available")
+    assert one("SELECT count(*) AS n FROM order_status_history WHERE transaction_id=%s", [order])["n"] == events + (0 if audit_failure else 1)
+    receipt = one("SELECT audit_id FROM admin_audit_logs WHERE transaction_id=%s", [order])
+    assert bool(receipt) is not audit_failure
 
 
 def test_no_score_alone_changes_visibility_or_account_and_stale_actions_fail(case_market):
@@ -122,6 +213,38 @@ def test_web_database_process_can_run_http_workflows_without_owner_privileges(ca
     finally:
         with connection.cursor() as cursor:
             cursor.execute("RESET ROLE")
+
+
+@pytest.mark.django_db(transaction=True, available_apps=[
+    "accounts", "marketplace", "risk", "django.contrib.auth", "django.contrib.contenttypes", "django.contrib.sessions",
+])
+def test_simultaneous_corrections_append_only_one_successor(case_market):
+    """Separate committed connections compete for the same canonical head."""
+    admin, product = case_market["admin"], case_market["product"]
+    record_decision(admin, product, 1, "fraud", "Initial synthetic review", "Synthetic evidence")
+    head = one("SELECT review_id FROM eligible_training_labels WHERE product_id=%s", [product])["review_id"]
+    barrier = Barrier(2)
+
+    def correct():
+        close_old_connections()
+        try:
+            reviewer = User.objects.get(pk=admin.pk)
+            barrier.wait(timeout=10)
+            try:
+                record_decision(reviewer, product, 1, "unresolved", "Concurrent correction",
+                                "Evidence is inconclusive", expected_head=head)
+                return "committed"
+            except ValidationError:
+                return "conflict"
+        finally:
+            connection.close()
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(lambda _: correct(), range(2)))
+    assert sorted(results) == ["committed", "conflict"]
+    assert one("SELECT count(*) AS n FROM moderation_reviews WHERE product_id=%s", [product])["n"] == 2
+    assert one("SELECT count(*) AS n FROM moderation_reviews WHERE supersedes_review_id=%s", [head])["n"] == 1
+    assert one("SELECT 1 FROM eligible_training_labels WHERE product_id=%s", [product]) is None
 
 
 @pytest.fixture(scope="module")
@@ -185,7 +308,7 @@ def test_real_artifact_activation_reviewed_export_and_web_role_download(client, 
         assert manifest["dataset_sha256"] == registered["dataset_sha256"]
         response = client.post(f"/admin-app/exports/{dataset}/download/", {"reason": "Verify protected research download"})
         assert response.status_code == 200 and response["X-Audit-Receipt"]
-        assert response["Cache-Control"] == "private, no-store"
+        assert {"private", "no-store"} <= set(response["Cache-Control"].split(", "))
         assert b"records.jsonl" in b"".join(response.streaming_content)
         schema_id = one("SELECT feature_schema_id FROM risk_models WHERE model_id=%s", [ids["model_id"]])["feature_schema_id"]
         draft = client.post("/admin-app/rulesets/new/", {"version": "admin-draft-v2", "schema_id": schema_id, "medium": 45, "high": 80, "max_age_hours": 24, "reason": "Create new reviewed threshold version"})

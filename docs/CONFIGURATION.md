@@ -24,7 +24,7 @@ Keep secrets and machine-specific paths in environment configuration. Keep share
 | Unanswered order expiry | 48 hours | Existing database setting and `expire_unanswered_orders`; applies only to `placed` orders. |
 | Current assessment age | 24 hours | Versioned `risk_rulesets.max_assessment_age`; currentness also requires matching revision/context/model/ruleset/schema. |
 | Risk thresholds | Medium starts at 40; High at 75 | Published versioned rules; `0 <= medium_min < high_min <= 100`. |
-| Pagination / polling | Catalog 12 cards; dashboard/history 20 rows; chat/risk poll every 5 seconds | Bounded page size and stable ID tiebreaker. Pause overlapping polling and back off on failure. |
+| Pagination / polling | Catalog 12 cards; dashboard/history 20 rows; chat polls every 5 seconds; risk every 10 seconds | Bounded page size and stable ID tiebreaker. Pause overlapping polling and back off on failure. |
 | Worker | 120-second lease; heartbeat at most 30 seconds; idle poll 2 seconds | SQL permits positive leases at most 10 minutes. Keep inference outside long-held transactions. |
 | Maintenance | Batch 100; daily reassessment; expire orders every 5 minutes | External scheduler; durable campaigns and idempotent database functions. Retry attempts/backoff remain the existing SQL policy: at most 3 claims and retry delay `2^attempts` seconds. |
 

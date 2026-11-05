@@ -1,5 +1,6 @@
 """Administrator operations; database triggers own their atomic audit/history events."""
 from datetime import timedelta
+from uuid import UUID
 
 from django.conf import settings
 from django.core.exceptions import PermissionDenied, ValidationError
@@ -19,6 +20,33 @@ def reason_text(reason):
     if not 1 <= len(reason) <= 5000:
         raise ValidationError("Provide an action reason of 1 to 5000 characters.")
     return reason
+
+
+def assign_report(user, product_id, report_id, assignee_id, expected_assignee, expected_status, reason):
+    require_admin(user)
+    with actor_transaction(user, reason_text(reason)):
+        report = one("SELECT * FROM fraud_reports WHERE report_id=%s AND product_id=%s FOR UPDATE", [report_id, product_id])
+        if not report or report["assigned_admin_id"] != expected_assignee or report["status"] != expected_status:
+            raise ValidationError("Report assignment or status changed. Review the case before assigning.")
+        if report["status"] not in ("pending", "reviewing"):
+            raise ValidationError("Only open reports can be assigned.")
+        if not one("SELECT 1 FROM users u JOIN users_groups ug ON ug.user_id=u.user_id JOIN auth_group g ON g.id=ug.group_id WHERE u.user_id=%s AND g.name='administrator' AND u.status='active' AND u.is_active", [assignee_id]):
+            raise ValidationError("Choose an active administrator.")
+        if assignee_id == expected_assignee:
+            raise ValidationError("This administrator is already assigned.")
+        rows("UPDATE fraud_reports SET assigned_admin_id=%s WHERE report_id=%s", [assignee_id, report_id])
+        return one("SELECT audit_id FROM admin_audit_logs WHERE report_id=%s ORDER BY audit_id DESC LIMIT 1", [report_id])["audit_id"]
+
+
+def request_rescan(user, product_id, request_key, reason):
+    require_admin(user)
+    try:
+        key = UUID(str(request_key))
+    except (ValueError, TypeError) as error:
+        raise ValidationError("A valid rescan request key is required.") from error
+    with actor_transaction(user, reason_text(reason)):
+        campaign = one("SELECT request_risk_rescan(%s,%s::uuid) AS campaign_id", [product_id, str(key)])
+        return one("SELECT source_audit_id AS audit_id FROM risk_rescan_campaigns WHERE campaign_id=%s", [campaign["campaign_id"]])["audit_id"]
 
 
 def record_decision(user, product_id, revision_no, verdict, reason, evidence, expected_head=None, report_id=None):
@@ -118,4 +146,5 @@ def activate_configuration(user, model_id, ruleset_id, reason, expected_model=No
         if (current_model["model_id"] if current_model else None) != expected_model or (current_rules["ruleset_id"] if current_rules else None) != expected_ruleset:
             raise ValidationError("The active configuration changed. Review the current pair before activation.")
         rows("SELECT activate_risk_configuration(%s,%s)", [model_id, ruleset_id])
+        return one("SELECT audit_id FROM admin_audit_logs WHERE model_id=%s ORDER BY audit_id DESC LIMIT 1", [model_id])["audit_id"]
 

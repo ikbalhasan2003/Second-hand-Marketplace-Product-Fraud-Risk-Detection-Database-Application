@@ -3,12 +3,12 @@ from django import forms
 
 class SearchForm(forms.Form):
     q = forms.CharField(max_length=200, required=False, label="Search listings")
-    category = forms.IntegerField(min_value=1, required=False)
+    category = forms.ChoiceField(required=False, choices=[("", "All categories")])
     minimum = forms.DecimalField(min_value=0, required=False, label="Minimum price")
     maximum = forms.DecimalField(min_value=0, required=False, label="Maximum price")
     condition = forms.ChoiceField(required=False, choices=[("", "All conditions")] + [(x, x.replace("_", " ").title()) for x in ("like_new", "good", "fair", "poor")])
     location = forms.CharField(max_length=150, required=False)
-    risk = forms.ChoiceField(required=False, choices=[("", "All risk states"), ("low", "Current low risk"), ("high", "Current high risk"), ("unassessed", "Unassessed / stale")])
+    risk = forms.ChoiceField(required=False, choices=[("", "All risk states"), ("low", "Current low risk"), ("medium", "Current medium risk"), ("high", "Current high risk"), ("unassessed", "Unassessed / stale")])
     sort = forms.ChoiceField(required=False, choices=[("", "Newest"), ("price", "Price: low to high")])
 
     def clean(self):

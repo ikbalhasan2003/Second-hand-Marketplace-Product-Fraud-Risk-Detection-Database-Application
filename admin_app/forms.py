@@ -38,6 +38,8 @@ class AuditFilterForm(forms.Form):
     actor = forms.IntegerField(min_value=1, required=False)
     event = forms.IntegerField(min_value=1, required=False)
     action = forms.CharField(max_length=64, required=False)
+    target_type = forms.ChoiceField(required=False, choices=[("", "Any target")] + [(name, name.title()) for name in ("product", "user", "transaction", "report", "model", "ruleset", "dataset")])
+    target_id = forms.IntegerField(min_value=1, required=False)
     start = forms.DateTimeField(required=False, label="From (Asia/Shanghai or explicit offset)")
     end = forms.DateTimeField(required=False, label="To (Asia/Shanghai or explicit offset)")
 
@@ -45,7 +47,18 @@ class AuditFilterForm(forms.Form):
         data = super().clean()
         if data.get("start") and data.get("end") and data["end"] < data["start"]:
             raise forms.ValidationError("The end must follow the start.")
+        if bool(data.get("target_type")) != bool(data.get("target_id")):
+            raise forms.ValidationError("Choose both a target type and target ID.")
         return data
+
+
+class QueueFilterForm(forms.Form):
+    source = forms.ChoiceField(required=False, choices=[("", "All sources"), ("reports", "Open reports"), ("ai", "Current High risk"), ("combined", "Both sources")])
+    risk = forms.ChoiceField(required=False, choices=[("", "Any assessment"), ("low", "Low"), ("medium", "Medium"), ("high", "High"), ("unassessed", "Unassessed")])
+    status = forms.ChoiceField(required=False, choices=[("", "Any open report status"), ("pending", "Pending"), ("reviewing", "Reviewing")])
+    assignee = forms.IntegerField(min_value=1, required=False, label="Assigned administrator ID")
+    unassigned = forms.BooleanField(required=False, label="Has unassigned open report")
+    age_days = forms.IntegerField(min_value=0, max_value=36500, required=False, label="Waiting at least (days)")
 
 
 class ExportForm(forms.Form):

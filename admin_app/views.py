@@ -1,6 +1,7 @@
 import io
 import json
 import zipfile
+import uuid
 
 from django.conf import settings
 from django.contrib import messages
@@ -16,8 +17,9 @@ from accounts.access import require_role
 from marketplace.db import actor_transaction, one, rows
 from marketplace.services.admin_exports import create_reviewed_export, reviewed_candidates
 from marketplace.services.moderation import activate_configuration, create_ruleset, moderate_target, record_decision, reason_text
+from marketplace.services.moderation import assign_report, request_rescan
 from marketplace.services.orders import transition_order
-from .forms import ActivationForm, AuditFilterForm, DecisionForm, ExportForm, RulesetForm
+from .forms import ActivationForm, AuditFilterForm, DecisionForm, ExportForm, QueueFilterForm, RulesetForm
 
 
 def error_message(error):
@@ -26,26 +28,77 @@ def error_message(error):
 
 @require_role("administrator")
 def dashboard(request):
+    error_message_text = None
+    if request.method == "POST":
+        try:
+            audit = request_rescan(request.user, int(request.POST.get("product_id", "0")), request.POST.get("request_key"), request.POST.get("reason", ""))
+            return redirect(f"/admin-app/audit-log/{audit}/")
+        except (DatabaseError, ValidationError, ValueError) as error:
+            error_message_text = error_message(error)
     counts = one("""SELECT (SELECT count(*) FROM admin_review_queue) AS queue,
+        (SELECT count(*) FROM products) AS total_listings,
+        (SELECT count(*) FROM current_listing_risk WHERE assessment_state='ready' AND risk_level='medium') AS medium_risk,
+        (SELECT count(*) FROM current_listing_risk WHERE assessment_state='ready' AND risk_level='high') AS high_risk,
         (SELECT count(*) FROM fraud_reports WHERE status IN ('pending','reviewing')) AS reports,
         (SELECT count(*) FROM transactions WHERE status='disputed') AS disputes,
         (SELECT count(*) FROM risk_scan_jobs WHERE status='failed') AS failed_scans""")
     return render(request, "admin_app/dashboard.html", {"title": "Marketplace oversight", "counts": counts,
+        "refreshed_at": timezone.now(), "request_key": request.POST.get("request_key") or uuid.uuid4(), "error": error_message_text,
+        "metrics": [(key.replace("_", " ").title(), value) for key, value in counts.items()],
+        "operations": rows("SELECT status,count(*) AS n,min(created_at) AS oldest FROM risk_scan_jobs WHERE status IN ('queued','processing','failed') GROUP BY status ORDER BY status"),
+        "failed_jobs": rows("SELECT job_id,product_id,revision_no,error_code,attempts,retry_at FROM risk_scan_jobs WHERE status='failed' ORDER BY job_id DESC LIMIT 20"),
+        "queue_preview": rows("SELECT * FROM admin_review_queue ORDER BY priority_group,oldest_waiting_at,product_id LIMIT 5"),
+        "active_model": one("SELECT version FROM risk_models WHERE state='active'"), "active_rules": one("SELECT version FROM risk_rulesets WHERE state='active'"),
         "recent": rows("SELECT * FROM admin_audit_logs ORDER BY occurred_at DESC,audit_id DESC LIMIT 8"),
-        "campaigns": rows("SELECT * FROM risk_rescan_campaigns WHERE status<>'completed' ORDER BY campaign_id LIMIT 10")})
+        "campaigns": rows("SELECT * FROM risk_rescan_campaigns WHERE status<>'completed' ORDER BY campaign_id LIMIT 10")}, status=409 if error_message_text else 200)
 
 
 @require_role("administrator")
 def queue(request):
+    filters = QueueFilterForm(request.GET)
     source = request.GET.get("source", "")
     suffix = {"reports": " WHERE open_report_count>0", "ai": " WHERE current_high_risk", "combined": " WHERE current_high_risk AND open_report_count>0"}.get(source, "")
     if request.GET.get("type") == "order-dispute":
         suffix = " WHERE false"
-    total = one("SELECT count(*) AS n FROM admin_review_queue" + suffix)["n"]
+    clauses, params = [], []
+    if filters.is_valid():
+        data = filters.cleaned_data
+        if data.get("risk") == "unassessed":
+            clauses.append("assessment_state<>'ready'")
+        elif data.get("risk"):
+            clauses.append("assessment_state='ready' AND risk_level=%s")
+            params.append(data["risk"])
+        if data.get("age_days") is not None:
+            clauses.append("oldest_waiting_at<=clock_timestamp()-(%s * interval '1 day')")
+            params.append(data["age_days"])
+        report_clauses = ["f.product_id=admin_review_queue.product_id", "f.status IN ('pending','reviewing')"]
+        if data.get("status"):
+            report_clauses.append("f.status=%s")
+            params.append(data["status"])
+        if data.get("assignee"):
+            report_clauses.append("f.assigned_admin_id=%s")
+            params.append(data["assignee"])
+        if data.get("unassigned"):
+            report_clauses.append("f.assigned_admin_id IS NULL")
+        if data.get("status") or data.get("assignee") or data.get("unassigned"):
+            clauses.append("EXISTS(SELECT 1 FROM fraud_reports f WHERE " + " AND ".join(report_clauses) + ")")
+    else:
+        clauses.append("false")
+    if clauses:
+        suffix += (" AND " if suffix else " WHERE ") + " AND ".join(clauses)
+    total = one("SELECT count(*) AS n FROM admin_review_queue" + suffix, params)["n"]
     page = Paginator(range(total), 25).get_page(request.GET.get("page"))
-    result = rows("SELECT * FROM admin_review_queue" + suffix + " ORDER BY priority_group,oldest_waiting_at,product_id LIMIT 25 OFFSET %s", [(page.number - 1) * 25])
-    return render(request, "admin_app/queue.html", {"title": "Moderation queue", "cases": result, "page": page, "source": source,
-        "disputes": rows("SELECT * FROM seller_order_history WHERE status='disputed' ORDER BY transaction_id LIMIT 50")})
+    result = rows("SELECT * FROM admin_review_queue" + suffix + " ORDER BY priority_group,oldest_waiting_at,product_id LIMIT 25 OFFSET %s", params + [(page.number - 1) * 25])
+    dispute_count = one("SELECT count(*) AS n FROM transactions WHERE status='disputed'")["n"]
+    dispute_page = Paginator(range(dispute_count), 25).get_page(request.GET.get("dispute_page"))
+    disputes = rows("SELECT * FROM seller_order_history WHERE status='disputed' ORDER BY created_at,transaction_id LIMIT 25 OFFSET %s", [(dispute_page.number - 1) * 25])
+    query = request.GET.copy()
+    query.pop("page", None)
+    dispute_query = request.GET.copy()
+    dispute_query.pop("dispute_page", None)
+    return render(request, "admin_app/queue.html", {"title": "Moderation queue", "cases": result, "page": page, "source": source, "form": filters,
+        "disputes": disputes, "dispute_page": dispute_page, "query": query.urlencode(),
+        "dispute_query": dispute_query.urlencode()})
 
 
 def case_context(product_id, revision, form=None):
@@ -61,6 +114,7 @@ def case_context(product_id, revision, form=None):
     return {"title": f"Case · listing #{product_id} · revision {revision}", "product": product, "revision": content,
         "revisions": rows("SELECT revision_no,title FROM product_revisions WHERE product_id=%s ORDER BY revision_no DESC", [product_id]),
         "decisions": decisions, "form": form or DecisionForm(initial={"revision_no": revision, "expected_head": head}),
+        "administrators": rows("SELECT u.user_id,u.full_name FROM users u JOIN users_groups ug ON ug.user_id=u.user_id JOIN auth_group g ON g.id=ug.group_id WHERE g.name='administrator' AND u.status='active' AND u.is_active ORDER BY u.full_name,u.user_id"),
         "reports": rows("SELECT * FROM fraud_reports WHERE product_id=%s AND revision_no=%s ORDER BY report_id", [product_id, revision]),
         "attachments": rows("SELECT a.*,f.revision_no FROM report_attachments a JOIN fraud_reports f USING(report_id) WHERE f.product_id=%s AND f.revision_no=%s", [product_id, revision]),
         "assessments": rows("SELECT j.job_id,j.status,j.feature_as_of,j.model_id,j.ruleset_id,l.risk_score,l.risk_level,l.observed_factors FROM risk_scan_jobs j LEFT JOIN risk_logs l USING(job_id) WHERE j.product_id=%s AND j.revision_no=%s ORDER BY j.job_id DESC LIMIT 10", [product_id, revision]),
@@ -85,6 +139,10 @@ def case(request, product_id):
             elif operation == "moderate":
                 report_id = int(request.POST["report_id"]) if request.POST.get("report_id") else None
                 audit = moderate_target(request.user, product_id, request.POST.get("action"), request.POST.get("reason", ""), request.POST.get("expected", ""), report_id, request.POST.get("outcome", ""))
+            elif operation == "assign":
+                assignee = request.user.pk if request.POST.get("assign_to_me") else int(request.POST.get("assignee_id", "0"))
+                expected = int(request.POST["expected_assignee"]) if request.POST.get("expected_assignee") else None
+                audit = assign_report(request.user, product_id, int(request.POST.get("report_id", "0")), assignee, expected, request.POST.get("expected_status"), request.POST.get("reason", ""))
             else:
                 raise ValidationError("Choose an explicit case action.")
             messages.success(request, f"Action committed. Audit receipt #{audit}.")
@@ -130,9 +188,9 @@ def models(request, model_id=None, ruleset_id=None):
         try:
             data = form.cleaned_data.copy()
             data.pop("confirm")
-            activate_configuration(request.user, **data)
+            audit = activate_configuration(request.user, **data)
             messages.success(request, "Configuration activated. Durable reassessment campaigns are queued; results update asynchronously.")
-            return redirect("/admin-app/models/")
+            return redirect(f"/admin-app/audit-log/{audit}/")
         except (DatabaseError, ValidationError) as error:
             context["error"] = error_message(error)
             return render(request, "admin_app/models.html", context, status=409)
@@ -165,6 +223,7 @@ def models(request, model_id=None, ruleset_id=None):
         if not context["selected_rules"]:
             raise Http404
         context["rule_values"] = rows("SELECT * FROM risk_rules WHERE ruleset_id=%s ORDER BY rule_key", [ruleset_id])
+        context["ruleset_receipt"] = one("SELECT audit_id,occurred_at FROM admin_audit_logs WHERE ruleset_id=%s ORDER BY audit_id DESC LIMIT 1", [ruleset_id])
     return render(request, "admin_app/models.html", context)
 
 
@@ -197,6 +256,9 @@ def audit_log(request, audit_id=None):
             if form.cleaned_data.get(name):
                 where.append(clause)
                 params.append(form.cleaned_data[name])
+        if form.cleaned_data.get("target_type"):
+            where.append(form.cleaned_data["target_type"] + "_id=%s")
+            params.append(form.cleaned_data["target_id"])
     else:
         where.append("false")
     suffix = " WHERE " + " AND ".join(where) if where else ""

@@ -1,6 +1,7 @@
 from functools import wraps
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
+from django.views.decorators.cache import never_cache
 
 
 def has_role(user, role):
@@ -17,5 +18,6 @@ def require_role(role, active=False):
             if role == "administrator" and request.user.status != "active":
                 raise PermissionDenied("An active administrator is required.")
             return view(request, *args, **kwargs)
-        return wrapped
+        # Admin responses include private reports, decisions and dataset metadata.
+        return never_cache(wrapped) if role == "administrator" else wrapped
     return decorator

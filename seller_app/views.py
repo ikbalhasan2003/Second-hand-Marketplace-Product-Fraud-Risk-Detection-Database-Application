@@ -160,5 +160,10 @@ def draft_image(request, product_id, position):
 
 @require_role("seller")
 def assessment(request, product_id):
-    _owned(request.user, product_id)
-    return JsonResponse(one("SELECT * FROM current_listing_risk WHERE product_id=%s", [product_id]))
+    product = _owned(request.user, product_id)
+    if request.GET.get("format") == "fragment":
+        response = render(request, "seller/risk_content.html", {"product": product})
+    else:
+        response = JsonResponse(one("SELECT * FROM current_listing_risk WHERE product_id=%s", [product_id]))
+    response["Cache-Control"] = "private, no-store"
+    return response

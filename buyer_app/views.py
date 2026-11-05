@@ -1,6 +1,7 @@
 import uuid
 from django.conf import settings
 from django.contrib import messages
+from django.core import signing
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.paginator import Paginator
 from django.db import DatabaseError
@@ -10,7 +11,7 @@ from django.views.decorators.http import require_POST
 from accounts.access import has_role, require_role
 from accounts.throttle import throttle
 from marketplace.db import actor_transaction, one, rows
-from marketplace.services.orders import place_order, transition_order
+from marketplace.services.orders import place_order, review_state, transition_order
 from .forms import ReportForm, SearchForm
 
 
@@ -22,7 +23,7 @@ def fail(request, error, template, context):
 def listing_record(product_id, revision=None):
     return one("""SELECT p.*,r.*,u.full_name AS seller_name,u.created_at AS seller_joined,
         c.name AS category_name,u.status AS seller_status,u.is_active AS seller_auth_active,
-        k.assessment_state,k.risk_score,k.risk_level,k.feature_as_of
+        k.assessment_state,k.risk_score,k.risk_level,k.feature_as_of,k.predicted_at,k.risk_id
         FROM products p JOIN product_revisions r ON r.product_id=p.product_id AND r.revision_no=coalesce(%s,p.current_revision_no)
         JOIN users u ON u.user_id=p.seller_id JOIN categories c USING(category_id)
         LEFT JOIN current_listing_risk k ON k.product_id=p.product_id WHERE p.product_id=%s""", [revision, product_id])
@@ -30,6 +31,7 @@ def listing_record(product_id, revision=None):
 
 def catalog(request):
     form = SearchForm(request.GET)
+    form.fields["category"].choices += [(str(row["category_id"]), row["name"]) for row in rows("SELECT category_id,name FROM categories ORDER BY name")]
     where = ["p.visibility='visible'", "p.availability IN ('available','reserved','sold')", "u.status='active'", "u.is_active"]
     params = []
     data = form.cleaned_data if form.is_valid() else {}
@@ -65,17 +67,17 @@ def catalog(request):
     count = one("SELECT count(*) AS total " + join, params)["total"]
     page = Paginator(range(count), 12).get_page(request.GET.get("page"))
     sort = "r.price,p.product_id DESC" if data.get("sort") == "price" else "p.created_at DESC,p.product_id DESC"
-    listings = rows("SELECT p.product_id,p.availability,r.title,r.price,r.currency,r.location,(SELECT storage_key FROM product_images i WHERE i.product_id=p.product_id AND i.revision_no=p.current_revision_no ORDER BY sort_order LIMIT 1) AS image_key " + join + " ORDER BY " + sort + " LIMIT 12 OFFSET %s", params + [(page.number - 1) * 12])
+    listings = rows("SELECT p.product_id,p.availability,r.title,r.price,r.currency,r.location,u.full_name AS seller_name,u.created_at AS seller_joined,(SELECT storage_key FROM product_images i WHERE i.product_id=p.product_id AND i.revision_no=p.current_revision_no ORDER BY sort_order LIMIT 1) AS image_key " + join + " ORDER BY " + sort + " LIMIT 12 OFFSET %s", params + [(page.number - 1) * 12])
     risk_by_product = {item["product_id"]: item for item in rows("SELECT product_id,assessment_state,risk_level FROM current_listing_risk WHERE product_id=ANY(%s)", [[item["product_id"] for item in listings]])} if listings else {}
     for listing in listings:
         listing.update(risk_by_product.get(listing["product_id"], {"assessment_state": "pending", "risk_level": None}))
-    if data.get("risk") in ("low", "high"):
+    if data.get("risk") in ("low", "medium", "high"):
         listings = [item for item in listings if item["assessment_state"] == "ready" and item["risk_level"] == data["risk"]]
     elif data.get("risk") == "unassessed":
         listings = [item for item in listings if item["assessment_state"] != "ready"]
     query = request.GET.copy()
     query.pop("page", None)
-    return render(request, "buyer/catalog.html", {"title": "Find your next useful thing", "form": form, "listings": listings, "page": page, "query": query.urlencode(), "count": count})
+    return render(request, "buyer/catalog.html", {"title": "Browse listings", "form": form, "listings": listings, "page": page, "query": query.urlencode(), "count": count, "filtered": any(value for key, value in request.GET.items() if key != "page")})
 
 
 def listing_detail(request, product_id, revision_no=None):
@@ -94,16 +96,23 @@ def listing_detail(request, product_id, revision_no=None):
         FROM risk_score_history h JOIN current_listing_risk k USING(risk_id)
         JOIN risk_models m ON m.model_id=h.model_id JOIN risk_rulesets s ON s.ruleset_id=h.ruleset_id
         WHERE k.product_id=%s AND k.assessment_state='ready'""", [product_id]) if revision_no is None else None
-    return render(request, "buyer/detail.html", {"title": listing["title"], "listing": listing, "images": images, "assessment": assessment, "request_key": uuid.uuid4(), "historical": revision_no is not None})
+    context = {"title": listing["title"], "listing": listing, "images": images, "assessment": assessment, "request_key": uuid.uuid4(), "historical": revision_no is not None}
+    context["review_token"] = signing.dumps([product_id, listing["revision_no"], review_state(listing)], salt="order-review")
+    context["revisions"] = rows("SELECT revision_no,created_at FROM product_revisions WHERE product_id=%s ORDER BY revision_no DESC", [product_id]) if request.user.is_authenticated and request.user.pk == listing["seller_id"] else []
+    if request.GET.get("assessment") == "fragment":
+        response = render(request, "components/risk.html", context)
+        response["Cache-Control"] = "private, no-store"
+        return response
+    return render(request, "buyer/detail.html", context)
 
 
 @require_role("buyer", active=True)
 @require_POST
 def purchase(request, product_id):
     try:
-        order_id = place_order(request.user, product_id, int(request.POST.get("revision_no", "0")), request.POST.get("request_key"), request.POST.get("acknowledge") == "yes")
+        order_id = place_order(request.user, product_id, int(request.POST.get("revision_no", "0")), request.POST.get("request_key"), request.POST.get("acknowledge") == "yes", request.POST.get("review_token"))
     except (DatabaseError, ValidationError, ValueError) as error:
-        return fail(request, error, "buyer/conflict.html", {"title": "Purchase needs review", "product_id": product_id})
+        return fail(request, error, "buyer/conflict.html", {"title": "Purchase needs review", "product_id": product_id, "purchase_retry": request.POST})
     return redirect(f"/buyer-app/orders/{order_id}/")
 
 
@@ -115,10 +124,15 @@ def role_gate(request, role):
 def orders(request, role="buyer"):
     role_gate(request, role)
     column = "buyer_id" if role == "buyer" else "seller_id"
-    count = one("SELECT count(*) AS n FROM seller_order_history WHERE " + column + "=%s", [request.user.pk])["n"]
+    state = request.GET.get("status", "")
+    suffix, params = column + "=%s", [request.user.pk]
+    if state:
+        suffix += " AND status=%s"
+        params.append(state)
+    count = one("SELECT count(*) AS n FROM seller_order_history WHERE " + suffix, params)["n"]
     page = Paginator(range(count), 20).get_page(request.GET.get("page"))
-    result = rows("SELECT * FROM seller_order_history WHERE " + column + "=%s ORDER BY created_at DESC,transaction_id DESC LIMIT 20 OFFSET %s", [request.user.pk, (page.number - 1) * 20])
-    return render(request, "buyer/orders.html", {"title": "My purchases" if role == "buyer" else "Sales", "orders": result, "role": role, "page": page})
+    result = rows("SELECT h.*,(SELECT full_name FROM users WHERE user_id=h.buyer_id) AS buyer_name,(SELECT full_name FROM users WHERE user_id=h.seller_id) AS seller_name FROM seller_order_history h WHERE " + suffix + " ORDER BY created_at DESC,transaction_id DESC LIMIT 20 OFFSET %s", params + [(page.number - 1) * 20])
+    return render(request, "buyer/orders.html", {"title": "My purchases" if role == "buyer" else "Sales", "orders": result, "role": role, "page": page, "query": "status=" + state, "states": ("placed", "accepted", "shipped", "disputed", "completed", "cancelled")})
 
 
 def order_detail(request, order_id, role="buyer"):
@@ -174,7 +188,8 @@ def conversations(request, role="buyer"):
 
 def conversation_detail(request, conversation_id, role="buyer"):
     conversation = conversation_record(request, conversation_id, role)
-    context = {"title": conversation["title"], "conversation": conversation, "role": role}
+    history = rows("SELECT message_id,sender_id,message_text,sent_at,read_at FROM chat_messages WHERE conversation_id=%s ORDER BY message_id DESC LIMIT 50", [conversation_id])
+    context = {"title": conversation["title"], "conversation": conversation, "role": role, "history": list(reversed(history)), "has_older": len(history) == 50}
     if request.method == "POST":
         if request.user.status != "active":
             raise PermissionDenied
@@ -185,6 +200,7 @@ def conversation_detail(request, conversation_id, role="buyer"):
             throttle("message", request.user.pk)
             with actor_transaction(request.user):
                 rows("INSERT INTO chat_messages(conversation_id,sender_id,message_text) VALUES(%s,%s,%s)", [conversation_id, request.user.pk, text])
+            messages.success(request, "Message sent.")
             return redirect(f"/{role}-app/conversations/{conversation_id}/")
     return render(request, "buyer/conversation.html", context)
 
@@ -193,9 +209,15 @@ def poll_messages(request, conversation_id, role="buyer"):
     conversation_record(request, conversation_id, role)
     try:
         after = max(0, int(request.GET.get("after_id", "0")))
+        before = max(0, int(request.GET.get("before_id", "0")))
+        if max(after, before) > 2**63 - 1:
+            raise ValueError
     except ValueError:
         return JsonResponse({"error": "Invalid message cursor"}, status=400)
-    result = rows("SELECT message_id,sender_id,message_text,sent_at,read_at FROM chat_messages WHERE conversation_id=%s AND message_id>%s ORDER BY message_id LIMIT 50", [conversation_id, after])
+    if before:
+        result = list(reversed(rows("SELECT message_id,sender_id,message_text,sent_at,read_at FROM chat_messages WHERE conversation_id=%s AND message_id<%s ORDER BY message_id DESC LIMIT 50", [conversation_id, before])))
+    else:
+        result = rows("SELECT message_id,sender_id,message_text,sent_at,read_at FROM chat_messages WHERE conversation_id=%s AND message_id>%s ORDER BY message_id LIMIT 50", [conversation_id, after])
     receipts = rows("SELECT message_id,read_at FROM chat_messages WHERE conversation_id=%s AND sender_id=%s AND read_at IS NOT NULL ORDER BY message_id DESC LIMIT 50", [conversation_id, request.user.pk])
     return JsonResponse({"messages": result, "receipts": receipts, "has_more": len(result) == 50})
 
@@ -205,13 +227,15 @@ def mark_read(request, conversation_id, role="buyer"):
     conversation_record(request, conversation_id, role)
     try:
         through = max(0, int(request.POST.get("through_id", "0")))
+        if through > 2**63 - 1:
+            raise ValueError
     except ValueError:
         return JsonResponse({"error": "Invalid message cursor"}, status=400)
     with actor_transaction(request.user):
         if "message_ids" in request.POST:
             try:
                 ids = [int(value) for value in request.POST.get("message_ids", "").split(",") if value]
-                if len(ids) > 50 or any(value <= 0 for value in ids):
+                if len(ids) > 50 or any(not 0 < value <= 2**63 - 1 for value in ids):
                     raise ValueError
             except ValueError:
                 return JsonResponse({"error": "Invalid visible message IDs"}, status=400)
@@ -265,6 +289,7 @@ def report_new(request, product_id):
                     metadata = store_image(image, private=True)
                     stored.append(metadata)
                     rows("INSERT INTO report_attachments(report_id,storage_key,sort_order,content_type,byte_size,content_sha256) VALUES(%s,%s,%s,%s,%s,%s)", [report["report_id"], metadata["storage_key"], index, metadata["content_type"], metadata["byte_size"], metadata["content_sha256"]])
+            messages.success(request, "Concern submitted. Evidence is private to you and authorized administrators.")
             return redirect(f"/buyer-app/reports/{report['report_id']}/")
         except (DatabaseError, ValidationError, OSError) as error:
             for metadata in stored:
@@ -278,10 +303,15 @@ def report_new(request, product_id):
 
 @require_role("buyer")
 def reports(request):
-    count = one("SELECT count(*) AS n FROM fraud_reports WHERE reporter_id=%s", [request.user.pk])["n"]
+    state = request.GET.get("status", "")
+    suffix, params = "reporter_id=%s", [request.user.pk]
+    if state:
+        suffix += " AND status=%s"
+        params.append(state)
+    count = one("SELECT count(*) AS n FROM fraud_reports WHERE " + suffix, params)["n"]
     page = Paginator(range(count), 20).get_page(request.GET.get("page"))
-    result = rows("SELECT f.*,r.title FROM fraud_reports f JOIN product_revisions r USING(product_id,revision_no) WHERE reporter_id=%s ORDER BY report_id DESC LIMIT 20 OFFSET %s", [request.user.pk, (page.number - 1) * 20])
-    return render(request, "buyer/reports.html", {"title": "My submitted reports", "reports": result, "page": page})
+    result = rows("SELECT f.*,r.title FROM fraud_reports f JOIN product_revisions r USING(product_id,revision_no) WHERE " + suffix + " ORDER BY report_id DESC LIMIT 20 OFFSET %s", params + [(page.number - 1) * 20])
+    return render(request, "buyer/reports.html", {"title": "My submitted reports", "reports": result, "page": page, "query": "status=" + state, "states": ("pending", "reviewing", "resolved", "dismissed")})
 
 
 @require_role("buyer")
@@ -290,7 +320,7 @@ def report_detail(request, report_id):
     if not report:
         raise Http404
     attachments = rows("SELECT attachment_id,content_type,byte_size FROM report_attachments WHERE report_id=%s ORDER BY sort_order", [report_id])
-    return render(request, "buyer/report.html", {"title": f"Report #{report_id}", "report": report, "attachments": attachments})
+    return render(request, "buyer/report.html", {"title": f"Report #{report_id}", "report": report, "attachments": attachments, "evidence_remaining": 3 - len(attachments)})
 
 
 @require_role("buyer")
@@ -334,7 +364,7 @@ def append_evidence(request, report_id):
             except OSError:
                 pass
         attachments = rows("SELECT attachment_id,content_type,byte_size FROM report_attachments WHERE report_id=%s ORDER BY sort_order", [report_id])
-        return fail(request, error, "buyer/report.html", {"title": f"Report #{report_id}", "report": report, "attachments": attachments})
+        return fail(request, error, "buyer/report.html", {"title": f"Report #{report_id}", "report": report, "attachments": attachments, "evidence_remaining": 3 - len(attachments)})
 
 
 def evidence(request, attachment_id):

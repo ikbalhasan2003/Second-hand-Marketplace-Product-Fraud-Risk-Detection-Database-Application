@@ -40,6 +40,16 @@ def files_manifest(root):
     return {path.relative_to(root).as_posix(): sha256(path) for path in sorted(root.rglob("*")) if path.is_file()}
 
 
+def application_manifest():
+    """Identify tested working files, including local edits absent from git HEAD."""
+    paths = [BASE / name for name in ("manage.py", "pyproject.toml", "PRD.md", "ARCHITECTURE.md")]
+    for name in ("accounts", "admin_app", "buyer_app", "config", "marketplace", "risk", "seller_app", "ml", "templates", "static", "requirements", "tests", "scripts", "database"):
+        paths.extend(path for path in (BASE / name).rglob("*")
+                     if path.is_file() and path.suffix in {".py", ".html", ".css", ".js", ".sql", ".txt", ".toml"}
+                     and "__pycache__" not in path.parts)
+    return {path.relative_to(BASE).as_posix(): sha256(path) for path in sorted(set(paths))}
+
+
 def percentile95(values):
     return sorted(values)[max(0, math.ceil(len(values) * 0.95) - 1)]
 
@@ -323,6 +333,8 @@ def main(argv=None):
             "processor": platform.processor(), "logical_cpus": os.cpu_count()},
         "dependencies": {name: version(name) for name in ("Django", "psycopg", "scikit-learn", "numpy", "Pillow")},
         "python": platform.python_version(), "git_revision": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=BASE, text=True).strip(),
+        "working_tree_dirty": bool(subprocess.check_output(["git", "status", "--porcelain"], cwd=BASE, text=True).strip()),
+        "application_source_sha256": application_manifest(),
         "limitations": ["Search HTTP timing excludes socket/TLS/image transfer", "Single-host synthetic workloads; no real-world load or fraud claim",
             "Operator-run quiesced restore drill, not an online point-in-time recovery test", "Generated databases and recovery files retained for review"]}
     try:

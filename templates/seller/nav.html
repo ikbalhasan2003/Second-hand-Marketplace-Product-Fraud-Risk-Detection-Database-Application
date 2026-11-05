@@ -1,4 +1,4 @@
 <nav aria-label="Seller navigation" class="d-flex flex-wrap gap-3 mb-4">
-<a href="{% url 'seller_dashboard' %}">My listings</a><a href="{% url 'seller_new' %}">Create listing</a>
+<a href="{% url 'seller_dashboard' %}">My listings</a>{% if user.status == 'active' %}<a href="{% url 'seller_new' %}">Create listing</a>{% else %}<span>Creating listings is restricted</span>{% endif %}
 <a href="{% url 'seller_orders' %}">Sales</a><a href="{% url 'seller_conversations' %}">Buyer conversations</a>
 </nav>
