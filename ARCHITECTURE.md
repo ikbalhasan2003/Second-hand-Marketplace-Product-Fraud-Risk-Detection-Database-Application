@@ -1,5 +1,7 @@
 # System Architecture Design
 
+> Implementation update (7 November 2026): the original design below is historical context. The runnable application now uses `/` for the shared buyer/seller marketplace, `/sell/` for seller workflows and `/admin-app/` for protected administration. Account appeals, scan-before-publication and durable training are implemented. Proposed routes, file maps and phase boundaries below are not a current setup contract. Use [current operations](docs/OPERATIONS.md), [the completed checklist](docs/PROJECT_UPDATE_PLAN.md) and [executed verification](docs/PROJECT_UPDATE_VERIFICATION.md) for delivered behavior and limitations.
+
 **Detailed database design:** [ER diagrams, 3NF, relational schema and SQL](DATABASE_DESIGN.md)
 
 **Project:** Second-hand Marketplace & Product Fraud Risk Detection Database Application  

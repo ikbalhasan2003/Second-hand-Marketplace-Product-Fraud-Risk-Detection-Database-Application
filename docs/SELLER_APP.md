@@ -4,7 +4,7 @@ The Seller App uses the shared Django identity and PostgreSQL schema. Follow the
 
 ## Implemented workflows
 
-The dashboard at `/seller-app/` lists only the current seller's products, actual active/sold/current-high counts and status filters. The form at `/seller-app/listings/new/` and owner-scoped edit route saves incomplete private drafts or publishes complete immutable revisions. Revision/assessment history is read-only. Sales and existing buyer conversations reuse the shared order/chat views under seller role gates, including seller polling/read endpoints.
+The dashboard at `/sell/` lists only the current seller's products, actual active/sold/current-high counts and status filters. The form at `/sell/listings/new/` and owner-scoped edit route saves incomplete private drafts or publishes complete immutable revisions. Revision/assessment history is read-only. Sales and existing buyer conversations reuse the shared order/chat views under seller role gates, including seller polling/read endpoints.
 
 `app_listing_drafts` is application infrastructure, installed by migration `0003_listing_drafts`, rather than incomplete `product_revisions` rows. Its JSON payload contains bounded editable fields, private image metadata and image-retention choice. Every save checks the current revision plus draft version under account/product locks. Draft saving does not advance the public pointer or enqueue a scan. An active order, completed sale, administrator removal or restricted account prevents editing. Drafts may be read by their owner after marketplace restriction.
 
@@ -12,7 +12,7 @@ Publication validates a complete form, creates the next revision and all image a
 
 Image validation decodes JPEG/PNG/WebP with Pillow, rejects animation, malformed bytes, excess dimensions and file/count limits, strips embedded metadata by re-encoding, and ignores user filenames for storage. The first upload handler bounds actual streamed file bytes as well as ordinary Content-Length. Django bounds non-file form bytes. Configure the deployment reverse proxy's complete request-body limit to 32 MiB as well, so multipart overhead and malformed raw uploads are bounded before the app. Private draft images are served only through an owner-checked route with `private, no-store` caching.
 
-The existing-case evidence endpoint at `/buyer-app/reports/<id>/evidence/` allows only the reporter to add files to an open case, including after blocking/deactivation. It locks the case, enforces three attachments total and uses private storage. New reports remain active-buyer-only. A reported seller cannot retrieve reporter-private evidence. Order-linked report forms display the purchased immutable revision.
+The existing-case evidence endpoint at `/reports/<id>/evidence/` allows only the reporter to add files to an open case, including after blocking/deactivation. It locks the case, enforces three attachments total and uses private storage. New reports remain active-buyer-only. A reported seller cannot retrieve reporter-private evidence. Order-linked report forms display the purchased immutable revision.
 
 ## Checks executed
 
@@ -30,3 +30,5 @@ The tests cover bounded decoding/storage integrity, streamed aggregate limits, p
 ## Interface limits
 
 The current form retains or removes all current-revision images together, and can discard all saved draft images. Individual drag/reorder editing and image previews are not yet implemented. Public/draft image lists display the actual stored order. A failed upload must be reselected by the browser. Private draft image metadata remains protected even when text validation fails; publication uses no invented assessment progress or score.
+
+Current scan/publication, appeals and background process policy: [OPERATIONS.md](OPERATIONS.md). Public listing access requires a current successful scan; submitted does not mean publicly released.

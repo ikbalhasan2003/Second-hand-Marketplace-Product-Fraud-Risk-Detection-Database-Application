@@ -2,5 +2,16 @@
 {% block content %}
 
 {% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
+<nav aria-label="Moderation navigation" class="d-flex flex-wrap gap-3 mb-4">
+<a href="/admin-app/">Overview</a>
+<a href="/admin-app/users/">Accounts</a>
+<a href="/admin-app/products/">Listings</a>
+<a href="/admin-app/risk-logs/">Risk evidence</a>
+<a href="/admin-app/review-queue/">Reports</a>
+<a href="/admin-app/policy/">Policy</a>
+<a href="/admin-app/audit-log/">Audit</a>
+<a href="/admin-app/appeals/">Unblock appeals</a>
+<a href="/admin-app/ai-settings/">AI settings and training</a>
+</nav>
 {% block admin_content %}{% endblock %}
 {% endblock %}

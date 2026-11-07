@@ -1,5 +1,9 @@
 # PostgreSQL migration authority
 
+See [Step 10 reconciliation, executed upgrade/backup evidence and recovery](STEP_10_DATABASE_DEPLOYMENT.md)
+for the 7 November 2026 deployment through marketplace 0011. Apply both reviewed
+privilege scripts, 008 followed by 009, after migrating the application schema.
+
 The runnable application uses **Django migrations as its only installation authority**.
 Use PostgreSQL 18 and run `python manage.py migrate` against a new, empty database
 with the controlled migration/owner connection. Do not run `database/install.sql`
@@ -15,7 +19,7 @@ checks remain enforced in PostgreSQL.
 
 `marketplace/0001_initial.py` installs frozen, reviewed SQL from its adjacent
 `sql/` directory inside Django's migration transaction. These are copies of
-reference scripts 001–005, with the duplicate identity/authentication DDL removed,
+reference scripts 001â€“005, with the duplicate identity/authentication DDL removed,
 the required identity database defaults/checks retained, and the explicit
 marketplace-role function made available in the baseline. Groups are provisioned
 without adding any user memberships. There is no pgvector dependency.
@@ -71,3 +75,7 @@ ran the following checks successfully:
 These results verify database installation/integrity, not all HTTP permissions,
 model accuracy, realistic performance, media backup or browser acceptance.
 
+
+## Completed update operations
+
+See [OPERATIONS.md](OPERATIONS.md) for current publication gates, separate scan/training/maintenance startup, export provenance, durable training triggers and explicit activation policy. See [SETUP.md](SETUP.md) for exact fresh-install/upgrade commands and [PROJECT_UPDATE_VERIFICATION.md](PROJECT_UPDATE_VERIFICATION.md) for measured evidence and operational limitations.

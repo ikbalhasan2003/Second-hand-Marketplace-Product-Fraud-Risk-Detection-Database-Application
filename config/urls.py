@@ -1,8 +1,11 @@
 from django.urls import include, path, re_path
-from accounts import views
+from accounts import views, appeals
 from buyer_app.views import listing_image
 
 urlpatterns = [
+    path("account/appeals/", appeals.appeals, name="account_appeals"),
+    path("account/appeals/evidence/<int:evidence_id>/", appeals.evidence, name="appeal_evidence"),
+    path("admin-app/appeals/", appeals.review, name="admin_appeals"),
     path("listing-media/<path:storage_key>", listing_image, name="listing_image"),
     path("login/", views.auth_page, {"app": "marketplace"}, name="marketplace_login"),
     path("register/", views.auth_page, {"app": "marketplace", "register": True}, name="marketplace_register"),

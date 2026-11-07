@@ -55,7 +55,7 @@ class AuditFilterForm(forms.Form):
 class QueueFilterForm(forms.Form):
     source = forms.ChoiceField(required=False, choices=[("", "All sources"), ("reports", "Open reports"), ("ai", "Current High risk"), ("combined", "Both sources")])
     risk = forms.ChoiceField(required=False, choices=[("", "Any assessment"), ("low", "Low"), ("medium", "Medium"), ("high", "High"), ("unassessed", "Unassessed")])
-    status = forms.ChoiceField(required=False, choices=[("", "Any open report status"), ("pending", "Pending"), ("reviewing", "Reviewing")])
+    status = forms.ChoiceField(required=False, choices=[("", "Any open report status"), ("pending", "Pending"), ("reviewing", "Under Review")])
     assignee = forms.IntegerField(min_value=1, required=False, label="Assigned administrator ID")
     unassigned = forms.BooleanField(required=False, label="Has unassigned open report")
     age_days = forms.IntegerField(min_value=0, max_value=36500, required=False, label="Waiting at least (days)")
@@ -65,4 +65,32 @@ class ExportForm(forms.Form):
     version = forms.RegexField(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$", max_length=100)
     cutoff = forms.DateTimeField(label="Immutable cutoff (Asia/Shanghai or explicit offset)")
     seed = forms.IntegerField(min_value=0, max_value=2147483647, initial=42)
+    reason = forms.CharField(max_length=5000, widget=forms.Textarea(attrs={"rows": 2}))
+
+
+class DirectoryFilterForm(forms.Form):
+    q = forms.CharField(max_length=150, required=False, label="Search ID, name or email")
+
+
+class RiskFilterForm(forms.Form):
+    level = forms.ChoiceField(required=False, choices=[("", "All levels"), ("low", "Low"), ("medium", "Medium"), ("high", "High")])
+    category = forms.IntegerField(min_value=1, required=False, label="Category ID")
+    start = forms.DateField(required=False, widget=forms.DateInput(attrs={"type": "date"}))
+    end = forms.DateField(required=False, widget=forms.DateInput(attrs={"type": "date"}))
+
+    def clean(self):
+        data = super().clean()
+        if data.get("start") and data.get("end") and data["end"] < data["start"]:
+            raise forms.ValidationError("The end must follow the start.")
+        return data
+
+
+class PolicyForm(forms.Form):
+    timeout_hours = forms.IntegerField(min_value=1, max_value=8760, label="Unanswered order timeout (hours)")
+    expected_hours = forms.DecimalField(widget=forms.HiddenInput)
+    reason = forms.CharField(max_length=5000, widget=forms.Textarea)
+
+
+class TrainingSettingsForm(forms.Form):
+    dataset_id = forms.TypedChoiceField(coerce=int, choices=(), label="Frozen training dataset")
     reason = forms.CharField(max_length=5000, widget=forms.Textarea(attrs={"rows": 2}))

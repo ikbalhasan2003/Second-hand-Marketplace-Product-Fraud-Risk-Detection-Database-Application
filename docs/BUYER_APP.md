@@ -1,6 +1,6 @@
 # Buyer App and shared marketplace workflows
 
-`/buyer-app/listings/` uses PostgreSQL full-text search over each public product's current revision, active seller status, category, price, condition, location and current-risk filters. Search is parameterized, bounded and paginated with a product-ID tiebreaker. The Low filter requires a current completed Low result; missing/failed/stale scores are never substituted with zero.
+`/listings/` uses PostgreSQL full-text search over each public product's current revision, active seller status, category, price, condition, location and current-risk filters. Search is parameterized, bounded and paginated with a product-ID tiebreaker. The Low filter requires a current completed Low result; missing/failed/stale scores are never substituted with zero.
 
 Purchases POST a random request UUID plus the exact displayed revision. The shared service fingerprints those immutable facts and invokes `place_order`; the database serializes replay identities and competing purchases. High-risk purchases require an explicit server-checked acknowledgement. Orders retain purchased terms and use `transition_order` with the expected state and a reason. Blocked/deactivated participants keep existing fulfilment, cancellation and dispute obligations; only administrators resolve a disputed order. No page claims a payment was processed.
 
@@ -15,3 +15,5 @@ python -m pytest tests/integration/test_buyer.py tests/integration/test_evidence
 ```
 
 The direct database regression suite separately exercises a two-connection competing-purchase race. See the delivery evidence for checks actually executed, workload measurements and remaining acceptance limits.
+
+Current scan/publication, appeals and background process policy: [OPERATIONS.md](OPERATIONS.md). Public listing access requires a current successful scan; submitted does not mean publicly released.

@@ -118,7 +118,7 @@ def create_ruleset(user, version, schema_id, medium, high, max_age_hours, reason
     require_admin(user)
     reason = reason_text(reason)
     if not 0 <= medium < high <= 100 or not 1 <= max_age_hours <= 168:
-        raise ValidationError("Require 0 ≤ Medium < High ≤ 100 and an age of 1 to 168 hours.")
+        raise ValidationError("Require 0 â‰¤ Medium < High â‰¤ 100 and an age of 1 to 168 hours.")
     with actor_transaction(user, reason):
         ruleset = one("INSERT INTO risk_rulesets(version,feature_schema_id,created_by,max_assessment_age) VALUES(%s,%s,%s,%s) RETURNING ruleset_id", [version, schema_id, user.pk, timedelta(hours=max_age_hours)])
         for key, value in (("medium_min", medium), ("high_min", high)):
@@ -148,3 +148,32 @@ def activate_configuration(user, model_id, ruleset_id, reason, expected_model=No
         rows("SELECT activate_risk_configuration(%s,%s)", [model_id, ruleset_id])
         return one("SELECT audit_id FROM admin_audit_logs WHERE model_id=%s ORDER BY audit_id DESC LIMIT 1", [model_id])["audit_id"]
 
+
+
+def moderate_account(user, user_id, action, expected, reason):
+    require_admin(user)
+    if action not in ("block", "unblock"):
+        raise ValidationError("Choose Block or Unblock.")
+    with actor_transaction(user, reason_text(reason)):
+        account = one("SELECT status FROM users WHERE user_id=%s FOR UPDATE", [user_id])
+        if not account:
+            raise Http404
+        if one("SELECT 1 FROM users_groups ug JOIN auth_group g ON g.id=ug.group_id WHERE ug.user_id=%s AND g.name='administrator'", [user_id]):
+            raise ValidationError("Administrator accounts require controlled provisioning.")
+        required = "active" if action == "block" else "blocked"
+        if expected != required or account["status"] != required:
+            raise ValidationError("Account status changed or transition is unavailable.")
+        rows("UPDATE users SET status=%s WHERE user_id=%s", ["blocked" if action == "block" else "active", user_id])
+        return one("SELECT audit_id FROM admin_audit_logs WHERE user_id=%s ORDER BY audit_id DESC LIMIT 1", [user_id])["audit_id"]
+
+
+def update_policy(user, timeout_hours, expected_hours, reason):
+    require_admin(user)
+    if not 1 <= timeout_hours <= 8760:
+        raise ValidationError("Timeout must be between 1 and 8760 hours.")
+    with actor_transaction(user, reason_text(reason)):
+        current = one("SELECT extract(epoch FROM unanswered_order_timeout)/3600 AS hours FROM marketplace_settings WHERE singleton FOR UPDATE")
+        if current["hours"] != expected_hours or current["hours"] == timeout_hours:
+            raise ValidationError("Policy changed or no change was requested. Reload before saving.")
+        rows("UPDATE marketplace_settings SET unanswered_order_timeout=%s WHERE singleton", [timedelta(hours=timeout_hours)])
+        return one("SELECT audit_id FROM admin_audit_logs WHERE action_type='marketplace_policy_change' ORDER BY audit_id DESC LIMIT 1")["audit_id"]

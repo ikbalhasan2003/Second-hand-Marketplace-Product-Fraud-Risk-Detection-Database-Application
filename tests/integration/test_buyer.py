@@ -225,3 +225,34 @@ def test_concurrent_buyers_cannot_double_purchase(market):
     order = one("SELECT revision_no,assessment_snapshot FROM transactions WHERE product_id=%s", [market["product"]])
     assert order["revision_no"] == 1 and order["assessment_snapshot"]["risk_id"] is not None
     assert one("SELECT count(*) AS n FROM transactions WHERE product_id=%s", [market["product"]])["n"] == 1
+
+
+def test_existing_sessions_and_stale_service_users_respect_block(client, market, settings, tmp_path):
+    from django.core.exceptions import PermissionDenied
+    from marketplace.services.listings import save_draft, withdraw_listing
+    from tests.unit.test_uploads import image_upload
+    settings.PRIVATE_MEDIA_ROOT = tmp_path / "private"
+    settings.MEDIA_ROOT = tmp_path / "public"
+    buyer, seller = market["buyer"], market["seller"]
+    client.force_login(buyer)
+    conversation = client.post(f"/listings/{market['product']}/conversations/")
+    assert conversation.status_code == 302
+    conversation_url = conversation.url
+    with actor_transaction(market["admin"], "Restrict existing sessions"):
+        rows("UPDATE users SET status='blocked' WHERE user_id IN (%s,%s)", [buyer.pk, seller.pk])
+    assert buyer.status == "active"  # stale in-memory service principal
+    with pytest.raises(PermissionDenied):
+        place_order(buyer, market["product"], 1, uuid4())
+    with pytest.raises(PermissionDenied):
+        save_draft(seller, {"title": "Blocked draft"}, [image_upload()])
+    with pytest.raises(PermissionDenied):
+        withdraw_listing(seller, market["product"])
+    assert client.post(conversation_url, {"message": "Blocked send"}).status_code == 403
+    assert client.post(f"/listings/{market['product']}/orders/", {"revision_no": 1, "request_key": str(uuid4())}).status_code == 403
+    assert client.get("/account/appeals/").status_code == 200
+    assert b"Working telescope" not in client.get("/").content
+    client.force_login(seller)
+    for path in ("/sell/listings/new/", f"/sell/listings/{market['product']}/edit/", f"/sell/listings/{market['product']}/publish/", "/sell/"):
+        assert client.post(path, {"title": "Blocked edit", "images": image_upload()}).status_code == 403
+    assert not list(tmp_path.rglob("*.png"))
+    assert one("SELECT visibility FROM products WHERE product_id=%s", [market["product"]])["visibility"] == "visible"

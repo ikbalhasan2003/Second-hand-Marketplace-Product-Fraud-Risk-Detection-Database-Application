@@ -53,6 +53,8 @@ def auth_page(request, app, register=False):
                 if user and (has_role(user, role) if role else (has_role(user, "buyer") or has_role(user, "seller"))) and (role != "administrator" or user.status == "active"):
                     if not role and has_role(user, "seller") and not has_role(user, "buyer"):
                         destination = "/sell/"
+                    if user.status == "blocked":
+                        destination = "/account/appeals/"
                     login(request, user)
                     target = request.GET.get("next", destination)
                     if not url_has_allowed_host_and_scheme(target, allowed_hosts={request.get_host()}, require_https=request.is_secure()):

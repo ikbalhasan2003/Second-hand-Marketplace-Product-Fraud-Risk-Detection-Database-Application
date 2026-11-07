@@ -128,7 +128,7 @@ def test_assignment_rescan_receipts_and_filtered_histories(client, interface_mar
     assert audits.context["page"].paginator.count >= 1
 
 
-def test_all_17_page_groups_render_at_desktop_and_mobile(interface_market, settings):
+def test_marketplace_and_admin_pages_render_at_desktop_and_mobile(interface_market, settings):
     """Route browser requests through Django's test client and actual local assets.
 
     No live server or external services are used. Install browser-lock.txt for this check.
@@ -148,6 +148,7 @@ def test_all_17_page_groups_render_at_desktop_and_mobile(interface_market, setti
     with actor_transaction(market["seller"]):
         rows("INSERT INTO chat_messages(conversation_id,sender_id,message_text) SELECT %s,%s,'Synthetic UI message ' || n FROM generate_series(1,60) n", [conversation_id, market["seller"].pk])
     pages = [
+        (buyer, "/"), (Client(), "/login/"), (Client(), "/admin-app/login/"),
         (buyer, "/listings/"), (buyer, f"/listings/{product}/"), (buyer, "/account/"),
         (Client(), "/register/"), (buyer, "/orders/"),
         (buyer, chat), (buyer, f"/listings/{product}/reports/new/"),
@@ -156,9 +157,24 @@ def test_all_17_page_groups_render_at_desktop_and_mobile(interface_market, setti
         (seller, "/sell/orders/"), (seller, chat.replace("/conversations/", "/sell/conversations/").replace("/orders/", "/sell/orders/")),
         (admin, "/admin-app/"), (admin, "/admin-app/review-queue/"),
         (admin, "/admin-app/models/"), (admin, "/admin-app/audit-log/"), (admin, "/admin-app/exports/"),
+        (admin, "/admin-app/users/"), (admin, "/admin-app/products/"),
+        (admin, f"/admin-app/users/{market['buyer'].pk}/"),
+        (admin, "/admin-app/risk-logs/"), (admin, "/admin-app/policy/"),
+        (admin, "/admin-app/ai-settings/"), (admin, "/admin-app/appeals/"),
     ]
     # Render in the test's DB thread; browser callbacks serve the captured documents.
-    documents = {path: client.get(path).content for client, path in pages}
+    documents = {}
+    for client, path in pages:
+        response = client.get(path)
+        assert response.status_code == 200, (path, response.status_code)
+        documents[path] = response.content
+    # Render a real blocked session without changing any working database records.
+    with actor_transaction(market["administrator"], "Synthetic responsive appeal verification"):
+        rows("UPDATE users SET status='blocked' WHERE user_id=%s", [market["buyer"].pk])
+    response = buyer.get("/account/appeals/")
+    assert response.status_code == 200
+    documents["/account/appeals/"] = response.content
+    pages.append((buyer, "/account/appeals/"))
     documents["/validation/"] = buyer.get("/listings/", {"minimum": 100, "maximum": 10}).content
     latest = one("SELECT max(message_id) AS n FROM chat_messages WHERE conversation_id=%s", [conversation_id])["n"]
     first_visible = buyer.get(chat).context["history"][0]["message_id"]
@@ -193,10 +209,10 @@ def test_all_17_page_groups_render_at_desktop_and_mobile(interface_market, setti
                 assert page.locator("input:not([type=hidden]):not([type=submit]),textarea,select").evaluate_all(
                     "fields => fields.every(field => field.labels.length || field.hasAttribute('aria-label'))"
                 ), path
-                if path in ("/listings/", "/account/", "/admin-app/models/"):
+                if path in ("/listings/", "/account/", "/admin-app/models/", "/admin-app/ai-settings/", "/account/appeals/"):
                     directory = settings.BASE_DIR / ".local" / "ui-qa"
                     directory.mkdir(parents=True, exist_ok=True)
-                    name = ("admin" if path.startswith("/admin-app/") else "account" if path == "/account/" else "buyer") + ("-mobile.png" if width == 360 else "-desktop.png")
+                    name = ("ai-settings" if path == "/admin-app/ai-settings/" else "appeals" if path == "/account/appeals/" else "admin" if path.startswith("/admin-app/") else "account" if path == "/account/" else "buyer") + ("-mobile.png" if width == 360 else "-desktop.png")
                     page.screenshot(path=str(directory / name), full_page=True)
         page.goto(f"http://ui.test/listings/{product}/")
         trigger = page.locator('[data-review-trigger]')

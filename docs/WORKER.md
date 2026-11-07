@@ -1,6 +1,6 @@
 # Risk worker and scheduler
 
-The latest prompts 1–8 checkpoint, including executed heartbeat, retry and maintenance-command recovery tests, is recorded in [PRE_ADMIN_VERIFICATION.md](PRE_ADMIN_VERIFICATION.md).
+The latest prompts 1â€“8 checkpoint, including executed heartbeat, retry and maintenance-command recovery tests, is recorded in [PRE_ADMIN_VERIFICATION.md](PRE_ADMIN_VERIFICATION.md).
 
 The implemented worker uses PostgreSQL's existing `claim_risk_job`, `save_risk_snapshot`, `heartbeat_risk_job`, `fail_risk_job` and `complete_risk_job` functions. The process claims and commits quickly, extracts all source facts in one repeatable-read read-only transaction, persists the frozen snapshot in a separate claim-checked transaction, loads a trusted artifact and completes the result atomically through the database API. A background thread renews the lease every one-third of the configured interval, capped at thirty seconds, using a separate connection. No model runs inside a database trigger or a web request.
 
@@ -46,3 +46,7 @@ The command resumes existing activation/evidence/manual/daily campaigns in persi
 Windows Task Scheduler should run `maintain_marketplace --daily --expire` daily at 02:00 configured local time, and `maintain_marketplace --expire` every five minutes. Set the task's working directory to this repository, choose `.venv\Scripts\python.exe`, supply the management command as arguments, use a restricted service account/environment, and configure restart on failure. Keep the worker as a separately supervised long-running process. On Linux use separate systemd services/timers with the same command/credentials. Scheduling is operational setup; merely running these commands once does not install an OS schedule.
 
 Back up database, immutable media, datasets, manifests and all referenced model bytes together. Restore into an isolated target before running web/worker/maintenance processes. The database does not preserve filesystem contents or prove that a public server, OS schedule or process supervisor has been deployed.
+
+## Completed update operations
+
+See [OPERATIONS.md](OPERATIONS.md) for current publication gates, separate scan/training/maintenance startup, export provenance, durable training triggers and explicit activation policy. See [SETUP.md](SETUP.md) for exact fresh-install/upgrade commands and [PROJECT_UPDATE_VERIFICATION.md](PROJECT_UPDATE_VERIFICATION.md) for measured evidence and operational limitations.

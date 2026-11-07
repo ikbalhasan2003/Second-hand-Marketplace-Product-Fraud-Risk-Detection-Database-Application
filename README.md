@@ -1,6 +1,6 @@
 # Second-hand marketplace and fraud risk screening
 
-A PostgreSQL-backed Django application with separate Buyer, Seller and Admin interfaces, immutable listing revisions, private conversations/evidence, transactional orders, audited moderation and a leased Random Forest risk worker. Scores support human review; they never establish fraud or automatically block an account. Payments happen outside the application.
+A PostgreSQL-backed Django application with a shared buyer/seller marketplace and protected administration, immutable listing revisions, private conversations/evidence, transactional orders, audited moderation and a leased Random Forest risk worker. Scores support human review; they never establish fraud or automatically block an account. Payments happen outside the application.
 
 Use Python 3.13, Django 5.2 LTS and PostgreSQL 18. Exact Python packages are pinned in [requirements/lock.txt](requirements/lock.txt). See [Windows setup](docs/SETUP.md), [migration authority](docs/MIGRATIONS.md), [configuration](docs/CONFIGURATION.md) and [worker operation](docs/WORKER.md).
 
@@ -51,3 +51,19 @@ Account registration, seller upgrades and reviewed sole-administrator provisioni
 Seller listing submission, publication eligibility, messaging and fulfilment: [Step 5 guide](docs/STEP_5_SELLER_WORKFLOWS.md). Public listing pages, photos and checkout require a current successful scan. Start the configured risk worker; submission does not run inference in the request. After successful demo scans, rerun `seed_demo` to create its purchase agreement.
 
 Buyer browsing, purchase assessment snapshots, reports, private evidence and profile editing: [Step 6 guide](docs/STEP_6_BUYER_WORKFLOWS.md).
+
+
+Administrator visibility is available at `/admin-app/users/`, `/admin-app/products/` and `/admin-app/risk-logs/`. Private account inspection supports explicit reasoned blocking/unblocking; administrator membership remains controlled by provisioning. Report review maps stored `reviewing` to **Under Review**, preserving existing records. The dashboard separately counts new Pending reports.
+
+`/admin-app/policy/` edits the unanswered-order timeout used by the order expiry maintenance process. Risk thresholds/assessment expiry remain versioned under `/admin-app/models/`. Every moderation change requires a reason and commits its audit in the same transaction. Apply marketplace migrations 0007 and 0008 with `.\.venv\Scripts\python.exe manage.py migrate` using the migration owner; apply `database/009_app_privileges.sql` after the base privilege script for fresh runtime-role setup. See [Step 7 verification](docs/PROJECT_UPDATE_VERIFICATION.md) for backup, migration and test evidence.
+
+
+Step 8: blocked members can use `/account/appeals/`; active administrators review at `/admin-app/appeals/`. See [account appeal policy, migration and verification](docs/STEP_8_ACCOUNT_APPEALS.md).
+
+AI settings, CSV exports and automatic training: see [Step 9 operations](docs/STEP_9_AI_TRAINING.md). Open `/admin-app/ai-settings/`; run `python manage.py run_training_worker` with a private trusted `REGISTRATION_DATABASE_URL`. Frozen datasets enqueue automatically; threshold changes only rescan. Candidates require explicit audited activation after evaluation.
+
+## Completed project update
+
+Start with [the operating guide](docs/OPERATIONS.md) for onboarding, sole-admin provisioning, moderation/appeals, scan-before-publication, CSV exports, durable training and explicit model activation. [Setup and upgrade commands](docs/SETUP.md) include both required privilege scripts. The [current requirements checklist](docs/PROJECT_UPDATE_PLAN.md) and [verification record](docs/PROJECT_UPDATE_VERIFICATION.md) distinguish implementation evidence from deployment prerequisites.
+
+Run the trainer separately with privately configured `REGISTRATION_DATABASE_URL`, or use `.\scripts\start_demo.ps1 -WithWorker -WithTrainingWorker` for the local demo. Schedule maintenance as documented; startup scripts install no scheduler. Marketplace migrations through 0011 and accounts through 0003 are recorded as applied locally; Step 12 creates no migrations. Production runtime login/ownership separation, supervised services, TLS/proxy acceptance and real-world model evaluation remain required. Do not replay the original administrator credential file: its identity remains a seller after the approved separate-admin transition.

@@ -2,6 +2,11 @@ from django.urls import path
 from . import views
 
 urlpatterns = [
+    path("ai-settings/", views.ai_settings),
+    path("users/", views.directory, {"kind": "users"}),
+    path("users/<int:user_id>/", views.account_detail),
+    path("products/", views.directory), path("risk-logs/", views.risk_history),
+    path("policy/", views.policy),
     path("", views.dashboard), path("review-queue/", views.queue),
     path("reviews/", views.queue), path("reviews/<int:product_id>/", views.case),
     path("reviews/orders/<int:order_id>/", views.dispute),

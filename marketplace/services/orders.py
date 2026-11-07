@@ -20,6 +20,9 @@ def place_order(user, product_id, revision_no, request_key, acknowledge=False, r
         raise ValidationError("A valid purchase request key is required.") from error
     fingerprint = hashlib.sha256(json.dumps([product_id, revision_no], separators=(",", ":")).encode()).hexdigest()
     with actor_transaction(user, "Buyer placed purchase agreement"):
+        current_user = one("SELECT status,is_active FROM users WHERE user_id=%s", [user.pk])
+        if not current_user or current_user["status"] != "active" or not current_user["is_active"]:
+            raise PermissionDenied("An active buyer is required.")
         # Reconcile an uncertain submission before considering changed availability/risk.
         rows("SELECT pg_advisory_xact_lock(hashtextextended(%s,0))", [f"{user.pk}:{request_key}"])
         existing = one("SELECT transaction_id,product_id,revision_no FROM transactions WHERE buyer_id=%s AND request_key=%s", [user.pk, str(request_key)])

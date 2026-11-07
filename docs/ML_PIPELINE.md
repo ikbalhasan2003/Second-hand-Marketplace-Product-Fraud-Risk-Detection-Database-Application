@@ -65,3 +65,7 @@ $env:REGISTRATION_DATABASE_URL = 'postgresql://migration-owner@localhost/secondh
 The local PostgreSQL registration was actually executed and returned dataset/model/ruleset IDs 1/1/1. It created a frozen dataset and measured model evaluations without activating inference. The local synthetic operator identity has an unusable password.
 
 Measured execution results and remaining application/database integration gaps belong in the delivery verification record; this document does not assert unexecuted checks or real-data performance.
+
+## Completed update operations
+
+See [OPERATIONS.md](OPERATIONS.md) for current publication gates, separate scan/training/maintenance startup, export provenance, durable training triggers and explicit activation policy. See [SETUP.md](SETUP.md) for exact fresh-install/upgrade commands and [PROJECT_UPDATE_VERIFICATION.md](PROJECT_UPDATE_VERIFICATION.md) for measured evidence and operational limitations.

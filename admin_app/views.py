@@ -1,3 +1,6 @@
+from datetime import datetime, time, timedelta
+from .forms import DirectoryFilterForm, RiskFilterForm, PolicyForm
+from marketplace.services.moderation import moderate_account, update_policy
 import io
 import json
 import zipfile
@@ -39,6 +42,7 @@ def dashboard(request):
         (SELECT count(*) FROM products) AS total_listings,
         (SELECT count(*) FROM current_listing_risk WHERE assessment_state='ready' AND risk_level='medium') AS medium_risk,
         (SELECT count(*) FROM current_listing_risk WHERE assessment_state='ready' AND risk_level='high') AS high_risk,
+        (SELECT count(*) FROM fraud_reports WHERE status='pending') AS new_reports,
         (SELECT count(*) FROM fraud_reports WHERE status IN ('pending','reviewing')) AS reports,
         (SELECT count(*) FROM transactions WHERE status='disputed') AS disputes,
         (SELECT count(*) FROM risk_scan_jobs WHERE status='failed') AS failed_scans""")
@@ -111,13 +115,13 @@ def case_context(product_id, revision, form=None):
         raise Http404
     decisions = rows("SELECT * FROM moderation_reviews WHERE product_id=%s AND revision_no=%s ORDER BY reviewed_at DESC,review_id DESC", [product_id, revision])
     head = decisions[0]["review_id"] if decisions else None
-    return {"title": f"Case · listing #{product_id} · revision {revision}", "product": product, "revision": content,
+    return {"title": f"Case Â· listing #{product_id} Â· revision {revision}", "product": product, "revision": content,
         "revisions": rows("SELECT revision_no,title FROM product_revisions WHERE product_id=%s ORDER BY revision_no DESC", [product_id]),
         "decisions": decisions, "form": form or DecisionForm(initial={"revision_no": revision, "expected_head": head}),
         "administrators": rows("SELECT u.user_id,u.full_name FROM users u JOIN users_groups ug ON ug.user_id=u.user_id JOIN auth_group g ON g.id=ug.group_id WHERE g.name='administrator' AND u.status='active' AND u.is_active ORDER BY u.full_name,u.user_id"),
         "reports": rows("SELECT * FROM fraud_reports WHERE product_id=%s AND revision_no=%s ORDER BY report_id", [product_id, revision]),
         "attachments": rows("SELECT a.*,f.revision_no FROM report_attachments a JOIN fraud_reports f USING(report_id) WHERE f.product_id=%s AND f.revision_no=%s", [product_id, revision]),
-        "assessments": rows("SELECT j.job_id,j.status,j.feature_as_of,j.model_id,j.ruleset_id,l.risk_score,l.risk_level,l.observed_factors FROM risk_scan_jobs j LEFT JOIN risk_logs l USING(job_id) WHERE j.product_id=%s AND j.revision_no=%s ORDER BY j.job_id DESC LIMIT 10", [product_id, revision]),
+        "assessments": rows("SELECT j.job_id,j.status,j.feature_as_of,j.feature_snapshot,j.model_id,j.ruleset_id,l.model_explanation,l.risk_score,l.risk_level,l.observed_factors FROM risk_scan_jobs j LEFT JOIN risk_logs l USING(job_id) WHERE j.product_id=%s AND j.revision_no=%s ORDER BY j.job_id DESC LIMIT 10", [product_id, revision]),
         "audits": rows("SELECT audit_id,action_type FROM admin_audit_logs WHERE product_id=%s ORDER BY audit_id DESC LIMIT 10", [product_id])}
 
 
@@ -267,7 +271,7 @@ def audit_log(request, audit_id=None):
     query = request.GET.copy()
     query.pop("page", None)
     events = rows("SELECT * FROM admin_audit_logs" + suffix + " ORDER BY occurred_at DESC,audit_id DESC LIMIT 25 OFFSET %s", params + [(page.number - 1) * 25])
-    return render(request, "admin_app/audit.html", {"title": "Audit log · read only", "events": events, "form": form, "page": page, "query": query.urlencode()})
+    return render(request, "admin_app/audit.html", {"title": "Audit log Â· read only", "events": events, "form": form, "page": page, "query": query.urlencode()})
 
 
 @require_role("administrator")
@@ -307,7 +311,7 @@ def export_download(request, dataset_id):
         manifest_path = (root / dataset["manifest_key"]).resolve()
         if not manifest_path.is_relative_to(root) or manifest_path.name != "manifest.json":
             raise ValueError("Invalid registered manifest path")
-        _, manifest = load_dataset(manifest_path.parent)
+        records, manifest = load_dataset(manifest_path.parent)
         if manifest["dataset_version"] != dataset["version"] or manifest["dataset_sha256"] != dataset["dataset_sha256"]:
             raise ValueError("Registered dataset checksum mismatch")
         archive = io.BytesIO()
@@ -316,10 +320,133 @@ def export_download(request, dataset_id):
                 output.write(manifest_path.parent / name, name)
         with actor_transaction(request.user, reason):
             receipt = one("SELECT app_audit_dataset_download(%s,%s) AS audit_id", [dataset_id, manifest["dataset_sha256"]])
+        if request.POST.get("format") == "csv":
+            from ml.datasets.csv_export import dataset_csv
+            archive = io.BytesIO(dataset_csv(records, manifest))
         archive.seek(0)
         response = FileResponse(archive, as_attachment=True, filename=f"dataset-{dataset_id}.zip", content_type="application/zip")
+        if request.POST.get("format") == "csv":
+            response["Content-Type"] = "text/csv; charset=utf-8"
+            response["Content-Disposition"] = f'attachment; filename="dataset-{dataset_id}.csv"'
         response["Cache-Control"] = "private, no-store"
         response["X-Audit-Receipt"] = str(receipt["audit_id"])
         return response
     except (DatabaseError, ValidationError, ValueError, OSError) as error:
         return render(request, "admin_app/exports.html", {"title": "Export unavailable", "error": error_message(error)}, status=409)
+
+
+
+
+def paginated(request, sql, params):
+    total = one("SELECT count(*) AS n FROM (" + sql + ") result", params)["n"]
+    page = Paginator(range(total), 25).get_page(request.GET.get("page"))
+    query = request.GET.copy()
+    query.pop("page", None)
+    return {"items": rows(sql + " LIMIT 25 OFFSET %s", params + [(page.number - 1) * 25]), "page": page, "query": query.urlencode()}
+
+
+@require_role("administrator")
+def directory(request, kind="products"):
+    form = DirectoryFilterForm(request.GET)
+    valid = form.is_valid()
+    q = form.cleaned_data.get("q", "") if valid else ""
+    term = "%" + q + "%"
+    if kind == "users":
+        sql = "SELECT u.user_id,u.full_name,u.email,u.status FROM users u WHERE (%s='' OR u.full_name ILIKE %s OR u.email ILIKE %s OR u.user_id::text=%s)"
+        params = [q, term, term, q]
+        order = " ORDER BY u.user_id DESC"
+    else:
+        sql = """SELECT p.product_id,r.title,p.seller_id,s.full_name,s.email,p.visibility,p.availability,
+            (SELECT string_agg('Order #'||t.transaction_id||': buyer #'||b.user_id||' '||b.full_name||' ('||t.status||')', '; ' ORDER BY t.transaction_id)
+             FROM transactions t JOIN users b ON b.user_id=t.buyer_id WHERE t.product_id=p.product_id) AS buyers
+            FROM products p JOIN users s ON s.user_id=p.seller_id
+            LEFT JOIN product_revisions r ON (r.product_id,r.revision_no)=(p.product_id,p.current_revision_no)
+            WHERE (%s='' OR r.title ILIKE %s OR s.full_name ILIKE %s OR s.email ILIKE %s OR p.product_id::text=%s
+                OR EXISTS(SELECT 1 FROM transactions t JOIN users b ON b.user_id=t.buyer_id WHERE t.product_id=p.product_id AND (b.full_name ILIKE %s OR b.email ILIKE %s OR b.user_id::text=%s)))"""
+        params = [q, term, term, term, q, term, term, q]
+        order = " ORDER BY p.product_id DESC"
+    if not valid:
+        sql += " AND false"
+    context = paginated(request, sql + order, params)
+    return render(request, "admin_app/directory.html", dict(context, title=kind.title(), kind=kind, form=form))
+
+
+@require_role("administrator")
+def account_detail(request, user_id):
+    account = one("SELECT user_id,full_name,email,location,private_contact,status,created_at FROM users WHERE user_id=%s", [user_id])
+    if not account:
+        raise Http404
+    context = {"title": "Account inspection", "account": account,
+        "roles": rows("SELECT g.name FROM auth_group g JOIN users_groups ug ON ug.group_id=g.id WHERE ug.user_id=%s", [user_id]),
+        "listings": rows("SELECT product_id,visibility,availability FROM products WHERE seller_id=%s ORDER BY product_id DESC LIMIT 25", [user_id]),
+        "orders": rows("SELECT transaction_id,product_id,status FROM transactions WHERE buyer_id=%s ORDER BY transaction_id DESC LIMIT 25", [user_id])}
+    if request.method == "POST":
+        try:
+            audit = moderate_account(request.user, user_id, request.POST.get("action"), request.POST.get("expected"), request.POST.get("reason", ""))
+            return redirect(f"/admin-app/audit-log/{audit}/")
+        except (DatabaseError, ValidationError) as error:
+            context["error"] = error_message(error)
+            return render(request, "admin_app/account.html", context, status=409)
+    return render(request, "admin_app/account.html", context)
+
+
+@require_role("administrator")
+def risk_history(request):
+    form = RiskFilterForm(request.GET)
+    clauses, params = [], []
+    if form.is_valid():
+        data = form.cleaned_data
+        for name, clause in (("level", "l.risk_level=%s"), ("category", "r.category_id=%s")):
+            if data.get(name):
+                clauses.append(clause)
+                params.append(data[name])
+        for name, operator, extra in (("start", ">=", 0), ("end", "<", 1)):
+            if data.get(name):
+                clauses.append("j.feature_as_of" + operator + "%s")
+                params.append(timezone.make_aware(datetime.combine(data[name] + timedelta(days=extra), time.min)))
+    else:
+        clauses.append("false")
+    sql = """SELECT l.*,j.product_id,j.revision_no,j.feature_as_of,j.feature_snapshot,j.model_id,j.ruleset_id,r.title,r.category_id,c.name AS category_name
+        FROM risk_logs l JOIN risk_scan_jobs j USING(job_id)
+        JOIN product_revisions r ON (r.product_id,r.revision_no)=(j.product_id,j.revision_no)
+        JOIN categories c USING(category_id)"""
+    if clauses:
+        sql += " WHERE " + " AND ".join(clauses)
+    context = paginated(request, sql + " ORDER BY j.feature_as_of DESC,j.job_id DESC", params)
+    return render(request, "admin_app/risk_history.html", dict(context, title="Recorded risk evidence", form=form,
+        categories=rows("SELECT category_id,name FROM categories ORDER BY name")))
+
+
+@require_role("administrator")
+def policy(request):
+    current = one("SELECT extract(epoch FROM unanswered_order_timeout)/3600 AS hours FROM marketplace_settings WHERE singleton")
+    form = PolicyForm(request.POST if request.method == "POST" else None, initial={"timeout_hours": current["hours"], "expected_hours": current["hours"]})
+    context = {"title": "Marketplace policy", "form": form}
+    if request.method == "POST" and form.is_valid():
+        try:
+            audit = update_policy(request.user, **form.cleaned_data)
+            return redirect(f"/admin-app/audit-log/{audit}/")
+        except (DatabaseError, ValidationError) as error:
+            context["error"] = error_message(error)
+            return render(request, "admin_app/policy.html", context, status=409)
+    return render(request, "admin_app/policy.html", context, status=400 if request.method == "POST" else 200)
+
+
+@require_role("administrator")
+def ai_settings(request):
+    from .forms import TrainingSettingsForm
+    form = TrainingSettingsForm(request.POST or None)
+    form.fields["dataset_id"].choices = [(item["dataset_id"], item["version"]) for item in
+        rows("SELECT dataset_id,version FROM dataset_versions WHERE state='frozen' ORDER BY dataset_id DESC")]
+    error = None
+    if request.method == "POST" and form.is_valid():
+        try:
+            with actor_transaction(request.user, reason_text(form.cleaned_data["reason"])):
+                job = one("SELECT app_enqueue_training(%s) AS job_id", [form.cleaned_data["dataset_id"]])
+            messages.success(request, f"Durable training job #{job['job_id']} selected. Duplicate requests reuse the existing job.")
+            return redirect("/admin-app/ai-settings/")
+        except (DatabaseError, ValidationError) as exc:
+            error = error_message(exc)
+    return render(request, "admin_app/ai_settings.html", {"title": "AI settings and training", "form": form, "error": error,
+        "jobs": rows("SELECT j.*,d.version FROM ai_training_jobs j JOIN dataset_versions d USING(dataset_id) ORDER BY job_id DESC LIMIT 50")},
+        status=409 if error else 200)

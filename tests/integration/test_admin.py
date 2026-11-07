@@ -62,10 +62,21 @@ def test_privileged_posts_reject_nonadministrators_and_blocked_admins(client, ca
     client.force_login(user)
     product = case_market["product"]
     for path in (f"/admin-app/cases/{product}/", "/admin-app/models/", "/admin-app/rulesets/new/",
+                 "/admin-app/ai-settings/", "/admin-app/appeals/", "/admin-app/policy/",
+                 f"/admin-app/users/{case_market['buyer'].pk}/",
                  "/admin-app/exports/", "/admin-app/exports/1/download/", "/admin-app/disputes/1/"):
         assert client.post(path, {"operation": "decision", "revision_no": 1, "verdict": "fraud",
                                   "reason": "Unauthorized attempt", "evidence": "Test"}).status_code == 403
     assert one("SELECT count(*) AS n FROM moderation_reviews WHERE product_id=%s", [product])["n"] == 0
+
+
+def test_new_privileged_forms_require_csrf_even_for_admin(case_market):
+    strict = Client(enforce_csrf_checks=True)
+    strict.force_login(case_market["admin"])
+    for path in ("/admin-app/ai-settings/", "/admin-app/appeals/", "/admin-app/policy/",
+                 f"/admin-app/users/{case_market['buyer'].pk}/"):
+        assert strict.get(path).status_code == 200
+        assert strict.post(path, {"reason": "Missing CSRF token"}).status_code == 403
 
 
 def test_admin_private_pages_prevent_caching(client, case_market):
@@ -323,3 +334,118 @@ def test_real_artifact_activation_reviewed_export_and_web_role_download(client, 
     finally:
         with connection.cursor() as cursor:
             cursor.execute("RESET ROLE")
+
+
+@pytest.mark.parametrize("path", ["users/", "products/", "risk-logs/", "policy/"])
+def test_visibility_pages_require_admin(client, case_market, path):
+    url = "/admin-app/" + path
+    assert client.get(url).status_code == 302
+    client.force_login(case_market["buyer"])
+    assert client.get(url).status_code == 403
+    client.force_login(case_market["admin"])
+    response = client.get(url)
+    assert response.status_code == 200
+    assert "no-store" in response["Cache-Control"]
+
+
+def test_directories_account_privacy_and_buyer_moderation(client, case_market):
+    admin, buyer = case_market["admin"], case_market["buyer"]
+    url = f"/admin-app/users/{buyer.pk}/"
+    client.force_login(buyer)
+    assert client.get(url).status_code == 403
+    client.force_login(admin)
+    response = client.get("/admin-app/users/", {"q": buyer.email})
+    assert len(response.context["items"]) == 1
+    response = client.get("/admin-app/products/", {"q": "telescope"})
+    assert response.context["items"][0]["buyers"] is None
+    assert b"No orders recorded" in response.content
+    response = client.get(url)
+    assert b"password" not in response.content.lower()
+    for action, expected, new in (("block", "active", "blocked"), ("unblock", "blocked", "active")):
+        response = client.post(url, {"action": action, "expected": expected, "reason": "Reviewed account evidence"})
+        assert response.status_code == 302
+        assert one("SELECT status FROM users WHERE user_id=%s", [buyer.pk])["status"] == new
+        audit = one("SELECT * FROM admin_audit_logs WHERE user_id=%s ORDER BY audit_id DESC LIMIT 1", [buyer.pk])
+        assert audit["admin_id"] == admin.pk and audit["occurred_at"]
+        assert audit["before_data"]["status"] == expected and audit["after_data"]["status"] == new
+    response = client.post(f"/admin-app/users/{admin.pk}/", {"action": "block", "expected": "active", "reason": "Attempt protected change"})
+    assert response.status_code == 409
+
+
+def test_policy_audit_and_stale_update(client, case_market):
+    from marketplace.services.moderation import update_policy
+    from decimal import Decimal
+    admin = case_market["admin"]
+    old = one("SELECT extract(epoch FROM unanswered_order_timeout)/3600 AS n FROM marketplace_settings")["n"]
+    apply_grants(Path(__file__).resolve().parents[2])
+    with connection.cursor() as cursor:
+        cursor.execute("SET LOCAL ROLE secondhand_web")
+    try:
+        audit_id = update_policy(admin, 72, old, "Allow more response time")
+    finally:
+        with connection.cursor() as cursor:
+            cursor.execute("RESET ROLE")
+    audit = one("SELECT * FROM admin_audit_logs WHERE audit_id=%s", [audit_id])
+    assert audit["admin_id"] == admin.pk and audit["after_data"]["target"] == "marketplace_settings"
+    with pytest.raises(ValidationError):
+        update_policy(admin, 96, old, "Stale policy update")
+    client.force_login(admin)
+    assert client.post("/admin-app/policy/", {"timeout_hours": 0, "expected_hours": Decimal(72), "reason": "Invalid policy"}).status_code == 400
+
+
+def test_report_states_keep_history_and_outcome_audits(case_market):
+    admin, buyer, product = (case_market[key] for key in ("admin", "buyer", "product"))
+    with actor_transaction(buyer):
+        report = one("INSERT INTO fraud_reports(product_id,revision_no,reporter_id,reason_code,comment) VALUES(%s,1,%s,'other','Review this evidence') RETURNING report_id", [product, buyer.pk])["report_id"]
+    moderate_target(admin, product, "reviewing", "Begin review", "pending", report)
+    audit = moderate_target(admin, product, "resolved", "Completed review", "reviewing", report, "Listing reviewed and action taken")
+    event = one("SELECT * FROM admin_audit_logs WHERE audit_id=%s", [audit])
+    assert event["before_data"]["status"] == "reviewing"
+    assert event["after_data"]["public_outcome"] == "Listing reviewed and action taken"
+    assert event["after_data"]["resolved_at"]
+    with pytest.raises(DatabaseError):
+        moderate_target(admin, product, "dismissed", "Attempt terminal change", "resolved", report, "Dismiss")
+
+
+def test_risk_filters_use_revision_category_and_captured_dates(client, case_market, scan_listing):
+    scan_listing(case_market["product"])
+    client.force_login(case_market["admin"])
+    url = "/admin-app/risk-logs/"
+    response = client.get(url)
+    assert response.status_code == 200
+    scan = response.context["items"][0]
+    assert scan["feature_snapshot"] and scan["product_id"] == case_market["product"]
+    assert len(client.get(url, {"category": scan["category_id"], "level": scan["risk_level"]}).context["items"]) == 1
+    assert not client.get(url, {"category": 999999}).context["items"]
+    assert not client.get(url, {"end": "2000-01-01"}).context["items"]
+    invalid = client.get(url, {"start": "2026-11-10", "end": "2026-11-01"})
+    assert invalid.context["form"].errors and not invalid.context["items"]
+
+
+@pytest.mark.parametrize("target", ["account", "policy"])
+def test_new_moderation_audit_failure_rolls_back(case_market, target):
+    from marketplace.services.moderation import moderate_account, update_policy
+    with connection.cursor() as cursor:
+        cursor.execute("""CREATE FUNCTION reject_visibility_audit() RETURNS trigger LANGUAGE plpgsql AS $$
+            BEGIN RAISE EXCEPTION 'Synthetic audit failure'; END $$;
+            CREATE TRIGGER visibility_audit_failure BEFORE INSERT ON admin_audit_logs
+            FOR EACH ROW EXECUTE FUNCTION reject_visibility_audit();""")
+    old = one("SELECT extract(epoch FROM unanswered_order_timeout)/3600 AS n FROM marketplace_settings")["n"]
+    with pytest.raises(DatabaseError):
+        if target == "account":
+            moderate_account(case_market["admin"], case_market["buyer"].pk, "block", "active", "Test rollback")
+        else:
+            update_policy(case_market["admin"], 72, old, "Test rollback")
+    assert one("SELECT status FROM users WHERE user_id=%s", [case_market["buyer"].pk])["status"] == "active"
+    assert one("SELECT extract(epoch FROM unanswered_order_timeout)/3600 AS n FROM marketplace_settings")["n"] == old
+
+
+def test_product_search_includes_real_order_buyer(client, case_market, scan_listing):
+    from marketplace.services.orders import place_order
+    scan_listing(case_market["product"])
+    buyer = case_market["buyer"]
+    order = place_order(buyer, case_market["product"], 1, uuid4())
+    client.force_login(case_market["admin"])
+    response = client.get("/admin-app/products/", {"q": buyer.email})
+    assert len(response.context["items"]) == 1
+    assert f"Order #{order}: buyer #{buyer.pk}" in response.context["items"][0]["buyers"]

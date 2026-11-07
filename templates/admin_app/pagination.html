@@ -1,0 +1,1 @@
+<nav aria-label="Result pages"><p>Page {{ page.number }} of {{ page.paginator.num_pages }} ? {{ page.paginator.count }} results</p>{% if page.has_previous %}<a href="?{{ query }}&page={{ page.previous_page_number }}">Previous</a>{% endif %} {% if page.has_next %}<a href="?{{ query }}&page={{ page.next_page_number }}">Next</a>{% endif %}</nav>

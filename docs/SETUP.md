@@ -20,7 +20,7 @@ python manage.py collectstatic --noinput
 python manage.py runserver
 ```
 
-Buyer, Seller and Admin enter through `/buyer-app/`, `/seller-app/` and `/admin-app/`, with separate login pages. Administrator identities must be provisioned through a trusted command, never public registration. The development media URL serves listing images only. Private report evidence has a separate authorization-checked route; configure Nginx/static serving for public listing media in deployment.
+Enter at `/` for the shared marketplace, `/sell/` for seller work, and `/admin-app/` for administration. Shared sign-in is `/login/`; admin sign-in is `/admin-app/login/`. See [onboarding and operating policy](OPERATIONS.md). Administrator provisioning is trusted and sign-in only. Route `/listing-media/` through Django in production as well as development; neither listing nor private evidence storage may be exposed directly as public static media.
 
 Logging goes to the console. It must not contain passwords, raw evidence, database credentials or session tokens. Database-backed sessions invalidate other sessions after a password change on their next authenticated request. Marketplace blocking and deactivation preserve existing order obligations; disabling `is_active` disables authentication entirely.
 
@@ -42,3 +42,23 @@ From the repository root, `scripts/setup_windows.ps1 -SeedDemo` installs the pin
 Run `scripts/start_demo.ps1` for the web application, or `scripts/start_demo.ps1 -WithWorker` after configuring the separate worker database login and registering/activating the trusted model. Without an active compatible model, pending assessments are expected. Use `scripts/stop_demo.ps1` to stop only the saved matching demo processes. These scripts start local background processes, not production services or an OS scheduler. Follow [DEMO.md](DEMO.md) for the cross-role walkthrough and [DELIVERY.md](DELIVERY.md) for measured acceptance evidence.
 
 Optional browser checks require `python -m pip install -r requirements/browser-lock.txt` and installed Microsoft Edge. They render Django responses with local assets at 1440px and 360px, exercise keyboard/dialog/polling/upload behavior, and write mobile screenshots under ignored `.local/ui-qa/`. An absent optional dependency skips this browser check; a skipped check must not be reported as executed.
+
+## Exact fresh-install and upgrade sequence
+
+For a fresh installation create an empty database first; for an upgrade preserve the existing database. Configure the controlled migration/role-management connection privately using PG variables. `psql` uses those same libpq variables; put its binary on PATH. Before upgrading, stop web/scan/training and scheduled writes and retain a recoverable coordinated database/media/artifact backup. Use a unique backup filename; verify restoration into a separate database before continuing.
+
+```powershell
+pg_dump --format=custom --file=runtime/before-update.dump
+createdb secondhand_upgrade_restore
+pg_restore --exit-on-error --dbname=secondhand_upgrade_restore runtime/before-update.dump
+.\.venv\Scripts\python.exe manage.py showmigrations
+.\.venv\Scripts\python.exe manage.py migrate --noinput
+psql -X --set=ON_ERROR_STOP=1 --file=database/008_privileges.sql
+psql -X --set=ON_ERROR_STOP=1 --file=database/009_app_privileges.sql
+.\.venv\Scripts\python.exe manage.py migrate --check
+.\.venv\Scripts\python.exe manage.py makemigrations --check --dry-run
+.\.venv\Scripts\python.exe manage.py check
+.\.venv\Scripts\python.exe manage.py collectstatic --noinput
+```
+
+Create `runtime` first if absent (`New-Item -ItemType Directory -Force runtime`). Backup/restore commands apply to upgrades; fresh installs have no preceding application data to recover. Review backup contents/ledger and retain subsequent writes for reconciliation; never restore over the working database automatically. See [the tested migration drill and recovery](STEP_10_DATABASE_DEPLOYMENT.md). Provision separate runtime LOGIN roles inheriting the documented process groups, switch away from owner credentials, and start/schedule the processes in [OPERATIONS.md](OPERATIONS.md). `setup_windows.ps1` does not apply the two privilege scripts or provision production login roles.

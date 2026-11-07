@@ -1,4 +1,4 @@
-param([int]$Port = 8000, [switch]$WithWorker)
+param([int]$Port = 8000, [switch]$WithWorker, [switch]$WithTrainingWorker)
 $ErrorActionPreference = 'Stop'
 $workspaceRoot = Split-Path -Parent $PSScriptRoot
 Set-Location -LiteralPath $workspaceRoot
@@ -19,9 +19,14 @@ if ($WithWorker) {
     $worker = Start-Process -FilePath $pythonPath -ArgumentList @('manage.py', 'run_risk_worker') -WorkingDirectory $workspaceRoot -WindowStyle Hidden -RedirectStandardOutput 'runtime\worker.out.log' -RedirectStandardError 'runtime\worker.err.log' -PassThru
     $processes += @{ role = 'worker'; id = $worker.Id; started = $worker.StartTime.ToUniversalTime().ToString('o'); path = $worker.Path }
 }
+if ($WithTrainingWorker) {
+    $trainer = Start-Process -FilePath $pythonPath -ArgumentList @('manage.py', 'run_training_worker') -WorkingDirectory $workspaceRoot -WindowStyle Hidden -RedirectStandardOutput 'runtime\trainer.out.log' -RedirectStandardError 'runtime\trainer.err.log' -PassThru
+    $processes += @{ role = 'trainer'; id = $trainer.Id; started = $trainer.StartTime.ToUniversalTime().ToString('o'); path = $trainer.Path }
+}
 $processes | ConvertTo-Json | Set-Content -LiteralPath $processFile -Encoding utf8
 Start-Sleep -Seconds 2
 if ($web.HasExited) { throw 'Web process stopped. Inspect runtime/web.err.log and runtime/web.out.log.' }
+if ($WithTrainingWorker -and $trainer.HasExited) { throw 'Training process stopped. Configure REGISTRATION_DATABASE_URL and inspect runtime/trainer.err.log.' }
 Write-Host "Buyer: http://127.0.0.1:$Port/"
 Write-Host "Seller: http://127.0.0.1:$Port/sell/"
 Write-Host "Admin: http://127.0.0.1:$Port/admin-app/"
