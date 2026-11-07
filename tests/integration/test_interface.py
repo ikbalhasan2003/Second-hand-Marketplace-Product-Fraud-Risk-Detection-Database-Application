@@ -16,7 +16,7 @@ from marketplace.services.orders import place_order, review_state
 
 
 @pytest.fixture
-def interface_market(db):
+def interface_market(db, scan_listing):
     people = {}
     for role in ("buyer", "seller", "administrator"):
         user = User.objects.create_user(f"ui-{role}@example.invalid", full_name=f"UI {role}")
@@ -28,6 +28,7 @@ def interface_market(db):
         "price": 80, "condition": "good", "location": "Shanghai",
     })
     people["product"] = product
+    scan_listing(people["product"])
     return people
 
 
@@ -56,19 +57,19 @@ def test_current_risk_labels_and_real_scores(level):
 
 
 def test_bound_forms_categories_medium_filter_and_error_summary(client, interface_market):
-    response = client.get("/buyer-app/listings/", {"minimum": 100, "maximum": 10})
+    response = client.get("/listings/", {"minimum": 100, "maximum": 10})
     assert b'data-error-summary' in response.content
     assert b'for="id_minimum"' in response.content
     assert b'value="100"' in response.content
     assert b'Current medium risk' in response.content
     assert b'All categories' in response.content
-    assert client.get("/buyer-app/listings/", {"risk": "medium"}).context["count"] == 0
+    assert client.get("/listings/", {"risk": "medium"}).context["count"] == 0
 
 
 def test_review_rejects_changed_assessment_and_reconciles_committed_request(client, interface_market):
     market = interface_market
     client.force_login(market["buyer"])
-    endpoint = f"/buyer-app/listings/{market['product']}/"
+    endpoint = f"/listings/{market['product']}/"
     page = client.get(endpoint)
     assert b'data-order-review' in page.content
     assert b'Payment and refunds take place outside this app' in page.content
@@ -90,10 +91,10 @@ def test_review_rejects_changed_assessment_and_reconciles_committed_request(clie
 def test_readable_chat_without_javascript_and_private_risk_fragments(client, interface_market):
     market = interface_market
     client.force_login(market["buyer"])
-    conversation = client.post(f"/buyer-app/listings/{market['product']}/conversations/").url
+    conversation = client.post(f"/listings/{market['product']}/conversations/").url
     client.post(conversation, {"message": "Preserve this actual message"})
     assert b'Preserve this actual message' in client.get(conversation).content
-    fragment = client.get(f"/buyer-app/listings/{market['product']}/?assessment=fragment")
+    fragment = client.get(f"/listings/{market['product']}/?assessment=fragment")
     assert fragment.status_code == 200 and "no-store" in fragment["Cache-Control"]
     assert b'<html' not in fragment.content
     with actor_transaction(market["administrator"], "Restrict synthetic UI member"):
@@ -107,9 +108,9 @@ def test_readable_chat_without_javascript_and_private_risk_fragments(client, int
 def test_assignment_rescan_receipts_and_filtered_histories(client, interface_market):
     market = interface_market
     client.force_login(market["buyer"])
-    client.post(f"/buyer-app/listings/{market['product']}/reports/", {"revision_no": 1, "reason_code": "other", "comment": "Synthetic interface concern"})
+    client.post(f"/listings/{market['product']}/reports/", {"revision_no": 1, "reason_code": "other", "comment": "Synthetic interface concern"})
     report = one("SELECT report_id FROM fraud_reports WHERE product_id=%s", [market["product"]])["report_id"]
-    assert client.get("/buyer-app/reports/?status=resolved").context["page"].paginator.count == 0
+    assert client.get("/reports/?status=resolved").context["page"].paginator.count == 0
     client.force_login(market["administrator"])
     case_url = f"/admin-app/cases/{market['product']}/"
     assignment = {"operation": "assign", "report_id": report, "expected_status": "pending", "assign_to_me": "yes", "reason": "Claim synthetic concern for review"}
@@ -142,23 +143,23 @@ def test_all_17_page_groups_render_at_desktop_and_mobile(interface_market, setti
     seller.force_login(market["seller"])
     admin.force_login(market["administrator"])
     product = market["product"]
-    chat = buyer.post(f"/buyer-app/listings/{product}/conversations/").url
+    chat = buyer.post(f"/listings/{product}/conversations/").url
     conversation_id = int(chat.rstrip("/").split("/")[-1])
     with actor_transaction(market["seller"]):
         rows("INSERT INTO chat_messages(conversation_id,sender_id,message_text) SELECT %s,%s,'Synthetic UI message ' || n FROM generate_series(1,60) n", [conversation_id, market["seller"].pk])
     pages = [
-        (buyer, "/buyer-app/listings/"), (buyer, f"/buyer-app/listings/{product}/"),
-        (Client(), "/buyer-app/register/"), (buyer, "/buyer-app/orders/"),
-        (buyer, chat), (buyer, f"/buyer-app/listings/{product}/reports/new/"),
-        (buyer, "/buyer-app/reports/"), (seller, "/seller-app/"),
-        (seller, "/seller-app/listings/new/"), (seller, f"/seller-app/listings/{product}/revisions/"),
-        (seller, "/seller-app/orders/"), (seller, chat.replace("buyer-app", "seller-app")),
+        (buyer, "/listings/"), (buyer, f"/listings/{product}/"), (buyer, "/account/"),
+        (Client(), "/register/"), (buyer, "/orders/"),
+        (buyer, chat), (buyer, f"/listings/{product}/reports/new/"),
+        (buyer, "/reports/"), (seller, "/sell/"),
+        (seller, "/sell/listings/new/"), (seller, f"/sell/listings/{product}/revisions/"),
+        (seller, "/sell/orders/"), (seller, chat.replace("/conversations/", "/sell/conversations/").replace("/orders/", "/sell/orders/")),
         (admin, "/admin-app/"), (admin, "/admin-app/review-queue/"),
         (admin, "/admin-app/models/"), (admin, "/admin-app/audit-log/"), (admin, "/admin-app/exports/"),
     ]
     # Render in the test's DB thread; browser callbacks serve the captured documents.
     documents = {path: client.get(path).content for client, path in pages}
-    documents["/validation/"] = buyer.get("/buyer-app/listings/", {"minimum": 100, "maximum": 10}).content
+    documents["/validation/"] = buyer.get("/listings/", {"minimum": 100, "maximum": 10}).content
     latest = one("SELECT max(message_id) AS n FROM chat_messages WHERE conversation_id=%s", [conversation_id])["n"]
     first_visible = buyer.get(chat).context["history"][0]["message_id"]
     older_payload = buyer.get(chat + f"messages/?before_id={first_visible}").json()
@@ -192,11 +193,12 @@ def test_all_17_page_groups_render_at_desktop_and_mobile(interface_market, setti
                 assert page.locator("input:not([type=hidden]):not([type=submit]),textarea,select").evaluate_all(
                     "fields => fields.every(field => field.labels.length || field.hasAttribute('aria-label'))"
                 ), path
-                if width == 360 and path in ("/buyer-app/listings/", "/admin-app/models/"):
+                if path in ("/listings/", "/account/", "/admin-app/models/"):
                     directory = settings.BASE_DIR / ".local" / "ui-qa"
                     directory.mkdir(parents=True, exist_ok=True)
-                    page.screenshot(path=str(directory / ("buyer-mobile.png" if "buyer-app" in path else "admin-mobile.png")), full_page=True)
-        page.goto(f"http://ui.test/buyer-app/listings/{product}/")
+                    name = ("admin" if path.startswith("/admin-app/") else "account" if path == "/account/" else "buyer") + ("-mobile.png" if width == 360 else "-desktop.png")
+                    page.screenshot(path=str(directory / name), full_page=True)
+        page.goto(f"http://ui.test/listings/{product}/")
         trigger = page.locator('[data-review-trigger]')
         trigger.focus()
         page.keyboard.press("Enter")
@@ -228,12 +230,12 @@ def test_all_17_page_groups_render_at_desktop_and_mobile(interface_market, setti
         sync.expect(list_region.locator('li')).to_have_count(61)
         page.reload()
         assert draft.input_value() == "Unsent draft survives a polling failure"
-        # Risk refresh failures retain the last real state, including its no-score contract.
-        page.goto(f"http://ui.test/buyer-app/listings/{product}/")
+        # Risk refresh failures retain the last completed assessment.
+        page.goto(f"http://ui.test/listings/{product}/")
         page.clock.fast_forward(11000)
         sync.expect(page.locator('[data-risk-status]')).to_contain_text("Unable to refresh")
-        assert "Scan pending" in page.locator('[data-risk-refresh]').inner_text()
-        assert "/100" not in page.locator('[data-risk-refresh]').inner_text()
+        assert "Risk score:" in page.locator('[data-risk-refresh]').inner_text()
+        assert "/100" in page.locator('[data-risk-refresh]').inner_text()
         # Focus may enter the panel after a request starts but before it completes.
         page.evaluate("""() => {
             window.fetch = () => new Promise(resolve => {window.finishRiskRefresh = resolve;});
@@ -251,7 +253,7 @@ def test_all_17_page_groups_render_at_desktop_and_mobile(interface_market, setti
         page.goto("http://ui.test/validation/")
         assert page.locator('[data-error-summary]').evaluate("element => element === document.activeElement")
         assert page.locator('#id_minimum').get_attribute('aria-invalid') is None  # non-field range error
-        page.goto(f"http://ui.test/buyer-app/listings/{product}/reports/new/")
+        page.goto(f"http://ui.test/listings/{product}/reports/new/")
         page.locator('#evidence').set_input_files({"name": "unsupported.svg", "mimeType": "image/svg+xml", "buffer": b"<svg/>"})
         assert not page.locator('#evidence').evaluate("input => input.checkValidity()")
         sync.expect(page.locator('.upload-preview')).to_contain_text("Unsupported image format")
@@ -259,3 +261,25 @@ def test_all_17_page_groups_render_at_desktop_and_mobile(interface_market, setti
         assert page.locator('#evidence').evaluate("input => input.files.length") == 0
         assert not errors
         browser.close()
+
+
+def test_storefront_preserves_real_photo_condition_and_selected_category(client, interface_market, settings, tmp_path, scan_listing):
+    from tests.unit.test_uploads import image_upload
+
+    settings.MEDIA_ROOT = tmp_path / "public"
+    settings.PRIVATE_MEDIA_ROOT = tmp_path / "private"
+    category = one("SELECT category_id FROM categories LIMIT 1")["category_id"]
+    product, _ = publish_listing(interface_market["seller"], {
+        "title": "Photographed second-hand lamp", "description": "Synthetic listing for photo delivery verification.",
+        "category_id": category, "price": 25, "condition": "like_new", "location": "Shanghai",
+    }, [image_upload()])
+    scan_listing(product)
+    page = client.get("/listings/", {"category": category})
+    listing = next(item for item in page.context["listings"] if item["product_id"] == product)
+    assert listing["condition"] == "like_new"
+    assert b"Like new" in page.content
+    assert f'/listing-media/{listing["image_key"]}'.encode() in page.content
+    image = client.get(f'/listing-media/{listing["image_key"]}')
+    assert image.status_code == 200 and image["Content-Type"].startswith("image/")
+    image.close()
+    assert b'aria-current="page"' in page.content

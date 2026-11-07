@@ -12,7 +12,7 @@ Keep secrets and machine-specific paths in environment configuration. Keep share
 | Supported interface/listing language | English (`en`) | Deployment setting. Unicode text remains accepted, but the v1 phrase dictionary and evaluation support English only. Do not claim multilingual detection. |
 | Display/refresh timezone | `Asia/Shanghai` | Django display setting and `marketplace_settings.refresh_timezone`; all persisted instants remain timezone aware. Daily campaigns use an explicit local date and timezone. |
 | Demo locations | Shanghai, Beijing, Guangzhou, Shenzhen, Hangzhou | Configurable suggestions for synthetic generation/forms; also accept nonempty free text up to the SQL limit of 150 characters. Suggestions neither verify geography nor imply a real deployment market. Legacy SQL fixtures use `Demo City`. |
-| Listing images | At most 6; each 1–5,242,880 bytes (5 MiB) | Deployment limits may be tightened, never exceed existing SQL bounds without a reviewed schema change. Zero images are allowed. |
+| Listing images | At most 6; each 1â€“5,242,880 bytes (5 MiB) | Deployment limits may be tightened, never exceed existing SQL bounds without a reviewed schema change. Zero images are allowed. |
 | Report evidence | At most 3; same per-file size/type limits | Private storage, participant/administrator authorization and immutable generated keys. |
 | Image formats | JPEG, PNG, WebP | Decode with Pillow; extension or browser MIME alone is insufficient. Reject malformed, animated, executable and SVG content; do not trust embedded metadata. |
 | Decoded image dimensions | Maximum 40,000,000 pixels; positive width/height | Reject decompression bombs before storing. No minimum resolution that would reject valid small course fixtures. |
@@ -62,3 +62,7 @@ Deactivation is soft and does not remove memberships or referenced evidence. Rea
 The reference SQL already implements the currency/timeout/timezone defaults, upload metadata bounds, immutable history, status values, transactional order transitions, queue leases/retries and risk currentness. It does not decode image bytes, configure Django sessions/CSRF, enforce browser-user object access, or implement shared rate counters. Those remain application responsibilities until implemented and verified. P1 appeals/notifications and P2 embeddings remain outside this decision set.
 
 The immutable feature contract is [FEATURE_CONTRACT.md](FEATURE_CONTRACT.md). An override to its normalization, windows, predictors or missing-value policy requires a new schema version and compatible retraining, rather than an environment toggle.
+
+## Listing image authorization
+
+Route `/listing-media/` through Django in development and production. Do not expose `PUBLIC_MEDIA_ROOT` as an unauthenticated static directory: it also stores immutable images of submitted, withdrawn and historical revisions. The image handler checks current publication eligibility or authorized seller, administrator, purchaser or reporter access and returns `private, no-store`. Back up this directory together with private media and the database. See [seller workflow policy](STEP_5_SELLER_WORKFLOWS.md).

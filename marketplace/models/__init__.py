@@ -110,6 +110,7 @@ class ChatMessage(models.Model):
 
 
 class Order(models.Model):
+    assessment_snapshot = models.JSONField(null=True)
     transaction_id = models.BigAutoField(primary_key=True)
     product_id = models.BigIntegerField()
     revision_no = models.IntegerField()

@@ -140,8 +140,8 @@ Data access is a sublayer of the business backend. File storage supports the dat
 
 | Application | URL namespace | Core workflows | Access |
 | --- | --- | --- | --- |
-| `buyer_app` | `/buyer-app/` | Public search/details; registration/login; purchases; conversations; reports and own case history | Browsing is public; buyer membership protects buyer actions |
-| `seller_app` | `/seller-app/` | Registration/login; listing drafts/revisions; images; own risk history; sales; fulfilment and conversations | Seller membership and object ownership |
+| `buyer_app` | `/` | Public search/details; registration/login; purchases; conversations; reports and own case history | Browsing is public; buyer membership protects buyer actions |
+| `seller_app` | `/sell/` | Registration/login; listing drafts/revisions; images; own risk history; sales; fulfilment and conversations | Seller membership and object ownership |
 | `admin_app` | `/admin-app/` | Restricted login; review queue; evidence; decisions; disputes; audits; models/rules and exports | Separately provisioned administrator membership |
 
 All three apps share one custom user model, Django groups and database-backed sessions. A buyer/seller account can explicitly enable its other marketplace role. Changing the app URL or navigation never adds a role. P0 administrator identities are separate from marketplace participants.
@@ -172,19 +172,19 @@ The following routes are proposed contracts, not implemented endpoints. `<id>` r
 
 | Method | Example route | Purpose | Required boundary |
 | --- | --- | --- | --- |
-| GET | `/buyer-app/listings/` | Paginated search and filters | Public visible catalog |
-| GET | `/buyer-app/listings/<id>/` | Listing and current risk summary | Public visibility policy or authorized history access |
-| POST | `/buyer-app/listings/<id>/orders/` | Place an order | Active buyer; active seller; availability; idempotency |
-| POST | `/buyer-app/orders/<id>/actions/` | Confirm, cancel or dispute | Buyer participant and allowed transition |
-| POST | `/buyer-app/listings/<id>/reports/` | Submit a revision-linked report | Buyer membership; not own listing; valid optional order |
-| POST | `/seller-app/listings/` | Create a draft | Active seller |
-| POST | `/seller-app/listings/<id>/publish/` | Publish/revise content | Active owning seller; no protected sale/order |
-| POST | `/seller-app/orders/<id>/actions/` | Accept, ship, cancel or dispute | Seller participant and allowed transition |
+| GET | `/listings/` | Paginated search and filters | Public visible catalog |
+| GET | `/listings/<id>/` | Listing and current risk summary | Public visibility policy or authorized history access |
+| POST | `/listings/<id>/orders/` | Place an order | Active buyer; active seller; availability; idempotency |
+| POST | `/orders/<id>/actions/` | Confirm, cancel or dispute | Buyer participant and allowed transition |
+| POST | `/listings/<id>/reports/` | Submit a revision-linked report | Buyer membership; not own listing; valid optional order |
+| POST | `/sell/listings/` | Create a draft | Active seller |
+| POST | `/sell/listings/<id>/publish/` | Publish/revise content | Active owning seller; no protected sale/order |
+| POST | `/sell/orders/<id>/actions/` | Accept, ship, cancel or dispute | Seller participant and allowed transition |
 | GET | `/<app>/conversations/<id>/messages/?after_id=<cursor>` | Poll messages | Buyer/seller app role and conversation participation |
 | POST | `/<app>/conversations/<id>/messages/` | Send a message | Active participant; length/rate limits |
 | POST | `/<app>/conversations/<id>/read/` | Update incoming read receipts | Receiving participant only |
-| GET | `/buyer-app/listings/<id>/risk/` | Poll a public assessment summary | Same listing visibility policy as details |
-| GET | `/seller-app/listings/<id>/risk-history/` | Inspect own assessment history | Owning seller |
+| GET | `/listings/<id>/risk/` | Poll a public assessment summary | Same listing visibility policy as details |
+| GET | `/sell/listings/<id>/risk-history/` | Inspect own assessment history | Owning seller |
 | GET | `/<app>/reports/<id>/attachments/<attachment_id>/` | Fetch private evidence | Reporter in Buyer App or authorized administrator in Admin App |
 | GET | `/admin-app/reviews/` | Deduplicated review queue | Administrator |
 | POST | `/admin-app/listings/<id>/decisions/` | Append a moderation decision | Administrator; target revision; reason and evidence summary |
@@ -192,7 +192,7 @@ The following routes are proposed contracts, not implemented endpoints. `<id>` r
 | POST | `/admin-app/rulesets/<id>/publish/` | Publish immutable rule version | Administrator; validated thresholds; audit |
 | POST | `/admin-app/exports/` | Create a versioned dataset export | Administrator; restricted output; audit |
 
-`<app>` above means `buyer-app`, `seller-app` or `admin-app` only where that workflow exists; it is not a permissive dynamic route.
+Conversation routes above use `/conversations/` for buyers and `/sell/conversations/` for sellers. Marketplace authentication is shared at `/login/` and `/register/`; administrator sign-in remains `/admin-app/login/`. Legacy app-prefixed bookmarks redirect to their canonical equivalents.
 
 Use Django sessions, CSRF-protected POSTs, validated return URLs and POST/redirect/GET for successful form actions. GET requests are read-only. JSON failures return stable error codes, a safe message and a request ID. Use `400` for invalid fields, `401` for unauthenticated JSON requests, `403` for forbidden actions, `404` where revealing a private object's existence is inappropriate, `409` for stale state/idempotency conflicts and `429` for throttling. HTML login flows may redirect instead of returning `401`.
 

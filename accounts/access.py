@@ -11,7 +11,7 @@ def has_role(user, role):
 def require_role(role, active=False):
     def decorator(view):
         @wraps(view)
-        @login_required(login_url=f"/{'admin' if role == 'administrator' else role}-app/login/")
+        @login_required(login_url="/admin-app/login/" if role == "administrator" else "/login/")
         def wrapped(request, *args, **kwargs):
             if not has_role(request.user, role) or (active and request.user.status != "active"):
                 raise PermissionDenied("This action requires the appropriate active membership.")

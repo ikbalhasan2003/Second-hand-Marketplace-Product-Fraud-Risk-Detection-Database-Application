@@ -1,4 +1,4 @@
-"""Owner-scoped drafts and atomic immutable publication; queueing stays in SQL triggers."""
+"""Owner-scoped drafts and immutable scan submissions; public release requires a current result."""
 import json
 
 from django.core.exceptions import PermissionDenied, ValidationError
@@ -92,7 +92,7 @@ def publish_listing(user, fields, uploads=(), *, product_id=None, expected_revis
     prepared = _prepare(uploads)
     written = []
     try:
-        with actor_transaction(user, "Publish immutable listing revision"):
+        with actor_transaction(user, "Submit immutable listing revision for scanning"):
             product, draft = _new_or_locked(user, product_id, expected_revision, draft_version)
             if not one("SELECT 1 FROM categories WHERE category_id=%s AND is_active", [fields["category_id"]]):
                 raise ValidationError("Select an active category.")

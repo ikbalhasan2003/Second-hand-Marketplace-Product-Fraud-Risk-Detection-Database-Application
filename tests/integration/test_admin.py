@@ -32,7 +32,7 @@ def case_market():
     result = {}
     for role, key in (("seller", "seller"), ("buyer", "buyer"), ("administrator", "admin")):
         user = User.objects.create_user(f"{key}-admin-tests@example.invalid", "Stone-river-4826!pass", full_name=key.title(), location="Shanghai")
-        user.groups.add(Group.objects.get(name=role))
+        user.groups.add(Group.objects.get_or_create(name=role)[0])
         result[key] = user
     result["fields"] = {"title": "Admin test telescope", "description": "Working telescope with a retained description.",
                         "price": Decimal("80.00"), "category_id": one("SELECT category_id FROM categories LIMIT 1")["category_id"],
@@ -137,11 +137,12 @@ def test_decision_audit_failure_rolls_back_chain_and_label(case_market):
 
 
 @pytest.mark.parametrize("audit_failure", [False, True])
-def test_dispute_resolution_requires_evidence_and_commits_audit_atomically(client, case_market, audit_failure):
+def test_dispute_resolution_requires_evidence_and_commits_audit_atomically(client, case_market, audit_failure, scan_listing):
     from marketplace.services.orders import place_order, transition_order
 
     buyer, seller, admin = (case_market[key] for key in ("buyer", "seller", "admin"))
     product = case_market["product"]
+    scan_listing(product)
     order = place_order(buyer, product, 1, uuid4())
     transition_order(seller, order, "accepted", "Accept synthetic order", "placed")
     transition_order(buyer, order, "disputed", "Synthetic delivery dispute", "accepted")
@@ -176,11 +177,12 @@ def test_no_score_alone_changes_visibility_or_account_and_stale_actions_fail(cas
     assert one("SELECT status,is_active FROM users WHERE user_id=%s", [case_market["seller"].pk]) == {"status": "blocked", "is_active": True}
 
 
-def test_web_database_process_can_run_http_workflows_without_owner_privileges(case_market, settings, tmp_path):
+def test_web_database_process_can_run_http_workflows_without_owner_privileges(case_market, settings, tmp_path, scan_listing):
     """SET LOCAL ROLE is the real process group; no mocked permissions or owner bypass."""
     settings.PRIVATE_MEDIA_ROOT = tmp_path / "private"
     settings.MEDIA_ROOT = tmp_path / "public"
     root = Path(settings.BASE_DIR)
+    scan_listing(case_market["product"])
     apply_grants(root)
     buyer_client, seller_client, admin_client, new_client = [Client() for _ in range(4)]
     for client, key in ((buyer_client, "buyer"), (seller_client, "seller"), (admin_client, "admin")):
@@ -188,17 +190,17 @@ def test_web_database_process_can_run_http_workflows_without_owner_privileges(ca
     with connection.cursor() as cursor:
         cursor.execute("SET LOCAL ROLE secondhand_web")
     try:
-        assert new_client.post("/buyer-app/register/", {"email": "web-role-new@example.invalid", "full_name": "Web role registration", "password": "Stone-river-4826!pass", "password_confirm": "Stone-river-4826!pass"}).status_code == 302
+        assert new_client.post("/register/", {"email": "web-role-new@example.invalid", "full_name": "Web role registration", "password": "Stone-river-4826!pass", "password_confirm": "Stone-river-4826!pass"}).status_code == 302
         assert new_client.get("/account/").status_code == 200
         assert new_client.post("/account/", {"old_password": "Stone-river-4826!pass", "new_password1": "Changed-stream-6295!pass", "new_password2": "Changed-stream-6295!pass"}).status_code == 302
-        assert new_client.post("/account/enable/seller/").status_code == 302
-        assert seller_client.get("/seller-app/").status_code == 200
-        draft = seller_client.post("/seller-app/listings/new/", {"title": "Real process draft", "expected_revision": 0, "draft_version": 0, "action": "draft"})
+        assert new_client.post("/account/enable/seller/", {"full_name": "Web seller", "location": "Shanghai", "private_contact": "support@example.invalid"}).status_code == 302
+        assert seller_client.get("/sell/").status_code == 200
+        draft = seller_client.post("/sell/listings/new/", {"title": "Real process draft", "expected_revision": 0, "draft_version": 0, "action": "draft"})
         assert draft.status_code == 302
         product = case_market["product"]
-        purchase = buyer_client.post(f"/buyer-app/listings/{product}/orders/", {"revision_no": 1, "request_key": str(uuid4())})
+        purchase = buyer_client.post(f"/listings/{product}/orders/", {"revision_no": 1, "request_key": str(uuid4())})
         assert purchase.status_code == 302
-        report = buyer_client.post(f"/buyer-app/listings/{product}/reports/", {"revision_no": 1, "reason_code": "other", "comment": "A human test concern"})
+        report = buyer_client.post(f"/listings/{product}/reports/", {"revision_no": 1, "reason_code": "other", "comment": "A human test concern"})
         assert report.status_code == 302
         assert admin_client.get("/admin-app/review-queue/").status_code == 200
         decision = admin_client.post(f"/admin-app/cases/{product}/", {"operation": "decision", "revision_no": 1, "verdict": "unresolved", "reason": "Synthetic runtime test", "evidence": "Evidence is insufficient"})

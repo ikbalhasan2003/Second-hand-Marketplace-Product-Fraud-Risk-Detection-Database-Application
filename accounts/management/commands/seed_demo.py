@@ -51,6 +51,8 @@ class Command(BaseCommand):
                     if user.status != "active" or not user.is_active:
                         raise CommandError(f"Existing {email} is restricted; preserve its moderation state")
                 else:
+                    if role == "administrator" and User.objects.filter(groups__name="administrator").exists():
+                        raise CommandError("An administrator already exists; demo provisioning cannot add another.")
                     user = User(email=email, full_name=name, location="Shanghai", is_staff=role == "administrator")
                     created.append(email)
                 if not user.pk or options["reset_passwords"]:
@@ -94,7 +96,12 @@ class Command(BaseCommand):
                 products.append(publish_listing(seller, {"title": title, "description": description, "price": Decimal(price), "original_price": None,
                                                        "condition": condition, "location": "Shanghai", "category_id": categories[index % len(categories)]["category_id"]}))
         existing_order = one("SELECT transaction_id FROM transactions WHERE product_id=%s AND buyer_id=%s ORDER BY transaction_id LIMIT 1", [products[1][0], buyer.pk])
-        order_id = existing_order["transaction_id"] if existing_order else place_order(buyer, *products[1], uuid5(NAMESPACE_URL, f"synthetic-demo-order:{buyer.pk}:{products[1][0]}"), acknowledge=True)
+        order_id = existing_order["transaction_id"] if existing_order else None
+        risk = one("SELECT assessment_state FROM current_listing_risk WHERE product_id=%s", [products[1][0]])
+        if not existing_order and risk and risk["assessment_state"] == "ready":
+            order_id = place_order(buyer, *products[1], uuid5(NAMESPACE_URL, f"synthetic-demo-order:{buyer.pk}:{products[1][0]}"), acknowledge=True)
+        elif not existing_order:
+            self.stdout.write("Demo purchase awaits a successful current scan. Run the worker, then rerun seed_demo.")
         with actor_transaction(buyer, "Create explicit synthetic demonstration conversation and concern"):
             conversation = one("INSERT INTO conversations(product_id,buyer_id) VALUES(%s,%s) ON CONFLICT(product_id,buyer_id) DO NOTHING RETURNING conversation_id", [products[0][0], buyer.pk])
             conversation = conversation or one("SELECT conversation_id FROM conversations WHERE product_id=%s AND buyer_id=%s", [products[0][0], buyer.pk])

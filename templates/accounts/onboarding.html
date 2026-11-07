@@ -1,0 +1,1 @@
+{% extends 'base.html' %}{% block content %}<section class="panel narrow"><h2>Become a seller</h2><p>Your existing account and buyer membership are preserved. Complete your seller profile to enable selling.</p><form method="post">{% csrf_token %}{% include 'components/form.html' %}<button class="btn btn-primary">Enable seller access</button></form></section>{% endblock %}

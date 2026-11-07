@@ -21,13 +21,13 @@ def test_demo_provisioning_is_private_separate_and_idempotent(settings, tmp_path
         assert user.check_password(details["password"])
         assert list(user.groups.values_list("name", flat=True)) == ["administrator" if role == "admin" else role]
     assert one("SELECT count(*) AS n FROM products")["n"] == 3
-    assert one("SELECT count(*) AS n FROM transactions")["n"] == 1
+    assert one("SELECT count(*) AS n FROM transactions")["n"] == 0
     assert one("SELECT count(*) AS n FROM chat_messages")["n"] == 2
     assert one("SELECT count(*) AS n FROM fraud_reports")["n"] == 1
     assert one("SELECT count(*) AS n FROM risk_logs")["n"] == 0
     call_command("seed_demo", verbosity=0)
     assert one("SELECT count(*) AS n FROM products")["n"] == 3
-    assert one("SELECT count(*) AS n FROM transactions")["n"] == 1
+    assert one("SELECT count(*) AS n FROM transactions")["n"] == 0
     assert json.loads((tmp_path / "runtime" / "demo_credentials.json").read_text())["users"] == credentials["users"]
 
 

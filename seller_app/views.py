@@ -17,9 +17,9 @@ from .forms import ListingForm
 
 def _owned(user, product_id):
     product = one("""SELECT p.*,r.title,r.description,r.category_id,r.condition,r.price,r.original_price,r.location,
-            r.currency,cr.assessment_state,cr.risk_score,cr.risk_level,cr.predicted_at
+            r.currency,cr.assessment_state,cr.risk_score,cr.risk_level,cr.predicted_at,rl.observed_factors
         FROM products p LEFT JOIN product_revisions r ON (r.product_id,r.revision_no)=(p.product_id,p.current_revision_no)
-        LEFT JOIN current_listing_risk cr ON cr.product_id=p.product_id WHERE p.product_id=%s AND p.seller_id=%s""", [product_id, user.pk])
+        LEFT JOIN current_listing_risk cr ON cr.product_id=p.product_id LEFT JOIN risk_logs rl ON rl.risk_id=cr.risk_id WHERE p.product_id=%s AND p.seller_id=%s""", [product_id, user.pk])
     if not product:
         raise Http404("Listing not found.")
     return product
@@ -31,12 +31,14 @@ def dashboard(request):
         return edit_listing(request)
     listing_rows = rows("""SELECT p.*,coalesce(r.title,d.payload->'fields'->>'title','Untitled draft') AS title,
         r.price,r.currency,cr.assessment_state,cr.risk_score,cr.risk_level,cr.predicted_at,
+        (SELECT observed_factors FROM risk_logs WHERE risk_id=cr.risk_id) AS observed_factors,
         EXISTS(SELECT 1 FROM transactions t WHERE t.product_id=p.product_id AND t.status<>'cancelled') AS locked
         FROM products p LEFT JOIN product_revisions r ON (r.product_id,r.revision_no)=(p.product_id,p.current_revision_no)
         LEFT JOIN app_listing_drafts d ON d.product_id=p.product_id LEFT JOIN current_listing_risk cr ON cr.product_id=p.product_id
         WHERE p.seller_id=%s ORDER BY p.updated_at DESC,p.product_id DESC""", [request.user.pk])
     metrics = {
-        "active": sum(row["availability"] in ("available", "reserved") and row["visibility"] == "visible" for row in listing_rows),
+        "active": sum(row["availability"] in ("available", "reserved") and row["visibility"] == "visible"
+                      and row["assessment_state"] == "ready" for row in listing_rows),
         "sold": sum(row["availability"] == "sold" for row in listing_rows),
         "high": sum(row["availability"] in ("available", "reserved") and row["visibility"] == "visible"
                     and row["assessment_state"] == "ready" and row["risk_level"] == "high" for row in listing_rows),
@@ -89,7 +91,7 @@ def edit_listing(request, product_id=None, force_publish=False):
                 raise ValidationError("Choose a valid listing action.")
             if form.is_valid():
                 saved_id, revision = publish_listing(request.user, form.cleaned_data, request.FILES.getlist("images"), **options)
-                messages.success(request, f"Published as revision r{revision}. A durable scan is queued; assessment may still be pending.")
+                messages.success(request, f"Revision r{revision} submitted for scanning. Public access waits for a current successful assessment.")
                 return redirect("seller_revisions", product_id=saved_id)
         except (ValueError, TypeError):
             form.add_error(None, "The form version is missing or invalid. Reload this page.")
@@ -122,7 +124,7 @@ def revisions(request, product_id, revision_no=None):
     if revision_no is not None and selected is None:
         raise Http404
     jobs = rows("""SELECT j.job_id,j.revision_no,j.context_version,j.model_id,j.ruleset_id,j.status,j.attempts,
-        j.feature_as_of,j.error_code,j.retry_at,l.risk_score,l.risk_level,l.predicted_at FROM risk_scan_jobs j
+        j.feature_as_of,j.error_code,j.retry_at,l.risk_score,l.risk_level,l.predicted_at,l.observed_factors FROM risk_scan_jobs j
         LEFT JOIN risk_logs l USING(job_id) WHERE j.product_id=%s ORDER BY j.job_id DESC""", [product_id])
     images = rows("SELECT * FROM product_images WHERE product_id=%s AND revision_no=%s ORDER BY sort_order",
                   [product_id, revision_no]) if selected else []

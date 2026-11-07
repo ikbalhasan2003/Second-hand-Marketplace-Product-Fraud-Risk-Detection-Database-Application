@@ -13,7 +13,7 @@ from marketplace.db import one
 
 
 @pytest.mark.django_db
-def test_cross_application_publish_chat_fulfil_report_review(settings, tmp_path):
+def test_cross_application_publish_chat_fulfil_report_review(settings, tmp_path, scan_listing):
     settings.MEDIA_ROOT = tmp_path / "public"
     settings.PRIVATE_MEDIA_ROOT = tmp_path / "private"
     clients = {}
@@ -23,7 +23,7 @@ def test_cross_application_publish_chat_fulfil_report_review(settings, tmp_path)
         clients[role] = Client()
         clients[role].force_login(user)
     buyer, seller, admin = (clients[role] for role in ("buyer", "seller", "administrator"))
-    published = seller.post("/seller-app/listings/new/", {
+    published = seller.post("/sell/listings/new/", {
         "action": "publish", "expected_revision": 0, "draft_version": 0,
         "title": "Synthetic delivery telescope", "description": "Synthetic course acceptance scenario.",
         "category_id": one("SELECT category_id FROM categories WHERE is_active LIMIT 1")["category_id"],
@@ -31,14 +31,16 @@ def test_cross_application_publish_chat_fulfil_report_review(settings, tmp_path)
     })
     assert published.status_code == 302
     product = one("SELECT product_id FROM products WHERE current_revision_no=1")["product_id"]
-    listing_url = f"/buyer-app/listings/{product}/"
+    listing_url = f"/listings/{product}/"
+    assert buyer.get(listing_url).status_code == 404
+    assert b"Synthetic delivery telescope" not in buyer.get("/listings/").content
+    assert scan_listing(product)["assessment_state"] == "ready"
     detail = buyer.get(listing_url)
-    assert detail.context["listing"]["assessment_state"] == "pending"
-    assert b"Synthetic delivery telescope" in buyer.get("/buyer-app/listings/").content
-    assert b"Scan pending" in seller.get("/seller-app/").content
+    assert b"Synthetic delivery telescope" in buyer.get("/listings/").content
+    assert b"Risk score:" in seller.get("/sell/").content
     conversation = buyer.post(listing_url + "conversations/").url
     assert buyer.post(conversation, {"message": "Can you confirm the recorded condition?"}).status_code == 302
-    seller_thread = conversation.replace("buyer-app", "seller-app")
+    seller_thread = conversation.replace("/conversations/", "/sell/conversations/").replace("/orders/", "/sell/orders/")
     assert b"recorded condition" in seller.get(seller_thread).content
     assert seller.post(seller_thread, {"message": "The description records the current condition."}).status_code == 302
     assert b"current condition" in buyer.get(conversation).content
@@ -47,7 +49,7 @@ def test_cross_application_publish_chat_fulfil_report_review(settings, tmp_path)
     })
     assert ordered.status_code == 302
     order_url = ordered.url
-    seller_order = order_url.replace("buyer-app", "seller-app")
+    seller_order = order_url.replace("/conversations/", "/sell/conversations/").replace("/orders/", "/sell/orders/")
     for client, url, previous, following in (
         (seller, seller_order, "placed", "accepted"),
         (seller, seller_order, "accepted", "shipped"),
@@ -66,8 +68,8 @@ def test_cross_application_publish_chat_fulfil_report_review(settings, tmp_path)
     assert reported.status_code == 302
     report = buyer.get(reported.url).context["report"]
     attachment = one("SELECT attachment_id FROM report_attachments WHERE report_id=%s", [report["report_id"]])["attachment_id"]
-    assert seller.get(f"/buyer-app/evidence/{attachment}/").status_code == 404
-    assert admin.get(f"/buyer-app/evidence/{attachment}/").status_code == 200
+    assert seller.get(f"/evidence/{attachment}/").status_code == 404
+    assert admin.get(f"/evidence/{attachment}/").status_code == 200
     case_url = f"/admin-app/cases/{product}/"
     assert b"Synthetic concern" in admin.get(case_url).content
     reviewed = admin.post(case_url, {"operation": "decision", "revision_no": 1, "report_id": report["report_id"], "verdict": "unresolved", "reason": "Synthetic evidence remains inconclusive", "evidence": "Reviewed the immutable revision and private image."})

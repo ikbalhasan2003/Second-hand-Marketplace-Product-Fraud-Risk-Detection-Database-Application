@@ -1,6 +1,7 @@
 import uuid
 from django.conf import settings
 from django.contrib import messages
+from django.contrib.auth.decorators import login_required
 from django.core import signing
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.paginator import Paginator
@@ -32,7 +33,7 @@ def listing_record(product_id, revision=None):
 def catalog(request):
     form = SearchForm(request.GET)
     form.fields["category"].choices += [(str(row["category_id"]), row["name"]) for row in rows("SELECT category_id,name FROM categories ORDER BY name")]
-    where = ["p.visibility='visible'", "p.availability IN ('available','reserved','sold')", "u.status='active'", "u.is_active"]
+    where = ["p.visibility='visible'", "p.availability IN ('available','reserved','sold')", "u.status='active'", "u.is_active", "listing_publication_allowed(p.product_id)"]
     params = []
     data = form.cleaned_data if form.is_valid() else {}
     if form.is_valid():
@@ -67,7 +68,7 @@ def catalog(request):
     count = one("SELECT count(*) AS total " + join, params)["total"]
     page = Paginator(range(count), 12).get_page(request.GET.get("page"))
     sort = "r.price,p.product_id DESC" if data.get("sort") == "price" else "p.created_at DESC,p.product_id DESC"
-    listings = rows("SELECT p.product_id,p.availability,r.title,r.price,r.currency,r.location,u.full_name AS seller_name,u.created_at AS seller_joined,(SELECT storage_key FROM product_images i WHERE i.product_id=p.product_id AND i.revision_no=p.current_revision_no ORDER BY sort_order LIMIT 1) AS image_key " + join + " ORDER BY " + sort + " LIMIT 12 OFFSET %s", params + [(page.number - 1) * 12])
+    listings = rows("SELECT p.product_id,p.availability,r.title,r.price,r.currency,r.location,r.condition,u.full_name AS seller_name,u.created_at AS seller_joined,(SELECT storage_key FROM product_images i WHERE i.product_id=p.product_id AND i.revision_no=p.current_revision_no ORDER BY sort_order LIMIT 1) AS image_key " + join + " ORDER BY " + sort + " LIMIT 12 OFFSET %s", params + [(page.number - 1) * 12])
     risk_by_product = {item["product_id"]: item for item in rows("SELECT product_id,assessment_state,risk_level FROM current_listing_risk WHERE product_id=ANY(%s)", [[item["product_id"] for item in listings]])} if listings else {}
     for listing in listings:
         listing.update(risk_by_product.get(listing["product_id"], {"assessment_state": "pending", "risk_level": None}))
@@ -77,16 +78,21 @@ def catalog(request):
         listings = [item for item in listings if item["assessment_state"] != "ready"]
     query = request.GET.copy()
     query.pop("page", None)
-    return render(request, "buyer/catalog.html", {"title": "Browse listings", "form": form, "listings": listings, "page": page, "query": query.urlencode(), "count": count, "filtered": any(value for key, value in request.GET.items() if key != "page")})
+    category_links = []
+    for value, label in form.fields["category"].choices:
+        category_query = query.copy()
+        category_query["category"] = value
+        category_links.append({"value": value, "label": label, "query": category_query.urlencode()})
+    return render(request, "buyer/catalog.html", {"title": "Find your next second-hand favourite", "categories": category_links, "form": form, "listings": listings, "page": page, "query": query.urlencode(), "count": count, "filtered": any(value for key, value in request.GET.items() if key != "page")})
 
 
 def listing_detail(request, product_id, revision_no=None):
     listing = listing_record(product_id, revision_no)
     if not listing:
         raise Http404
-    public = listing["visibility"] == "visible" and listing["availability"] != "draft" and listing["seller_status"] == "active" and listing["seller_auth_active"]
+    public = listing["assessment_state"] == "ready" and listing["visibility"] == "visible" and listing["availability"] != "draft" and listing["seller_status"] == "active" and listing["seller_auth_active"]
     if revision_no or not public:
-        permitted = request.user.is_authenticated and (request.user.pk == listing["seller_id"] or has_role(request.user, "administrator") or
+        permitted = request.user.is_authenticated and (request.user.pk == listing["seller_id"] or (has_role(request.user, "administrator") and request.user.status == "active") or
             one("SELECT 1 FROM transactions WHERE product_id=%s AND buyer_id=%s AND revision_no=%s", [product_id, request.user.pk, listing["revision_no"]]) or
             one("SELECT 1 FROM fraud_reports WHERE product_id=%s AND reporter_id=%s AND revision_no=%s", [product_id, request.user.pk, listing["revision_no"]]))
         if not permitted:
@@ -103,7 +109,9 @@ def listing_detail(request, product_id, revision_no=None):
         response = render(request, "components/risk.html", context)
         response["Cache-Control"] = "private, no-store"
         return response
-    return render(request, "buyer/detail.html", context)
+    response = render(request, "buyer/detail.html", context)
+    response["Cache-Control"] = "private, no-store"
+    return response
 
 
 @require_role("buyer", active=True)
@@ -113,7 +121,7 @@ def purchase(request, product_id):
         order_id = place_order(request.user, product_id, int(request.POST.get("revision_no", "0")), request.POST.get("request_key"), request.POST.get("acknowledge") == "yes", request.POST.get("review_token"))
     except (DatabaseError, ValidationError, ValueError) as error:
         return fail(request, error, "buyer/conflict.html", {"title": "Purchase needs review", "product_id": product_id, "purchase_retry": request.POST})
-    return redirect(f"/buyer-app/orders/{order_id}/")
+    return redirect(f"/orders/{order_id}/")
 
 
 def role_gate(request, role):
@@ -121,26 +129,31 @@ def role_gate(request, role):
         raise PermissionDenied
 
 
+@login_required
 def orders(request, role="buyer"):
     role_gate(request, role)
     column = "buyer_id" if role == "buyer" else "seller_id"
     state = request.GET.get("status", "")
     suffix, params = column + "=%s", [request.user.pk]
     if state:
-        suffix += " AND status=%s"
-        params.append(state)
+        suffix += " AND status=ANY(%s)"
+        params.append(["placed", "accepted"] if state == "pending" else [state])
     count = one("SELECT count(*) AS n FROM seller_order_history WHERE " + suffix, params)["n"]
     page = Paginator(range(count), 20).get_page(request.GET.get("page"))
     result = rows("SELECT h.*,(SELECT full_name FROM users WHERE user_id=h.buyer_id) AS buyer_name,(SELECT full_name FROM users WHERE user_id=h.seller_id) AS seller_name FROM seller_order_history h WHERE " + suffix + " ORDER BY created_at DESC,transaction_id DESC LIMIT 20 OFFSET %s", params + [(page.number - 1) * 20])
-    return render(request, "buyer/orders.html", {"title": "My purchases" if role == "buyer" else "Sales", "orders": result, "role": role, "page": page, "query": "status=" + state, "states": ("placed", "accepted", "shipped", "disputed", "completed", "cancelled")})
+    for order in result:
+        order["display_status"] = "pending" if order["status"] in ("placed", "accepted") else order["status"]
+    return render(request, "buyer/orders.html", {"title": "My purchases" if role == "buyer" else "Sales", "orders": result, "role": role, "page": page, "query": "status=" + state, "states": ("pending", "shipped", "completed", "cancelled", "disputed")})
 
 
+@login_required
 def order_detail(request, order_id, role="buyer"):
     role_gate(request, role)
     column = "buyer_id" if role == "buyer" else "seller_id"
-    order = one("SELECT * FROM seller_order_history WHERE transaction_id=%s AND " + column + "=%s", [order_id, request.user.pk])
+    order = one("SELECT h.*,t.assessment_snapshot FROM seller_order_history h JOIN transactions t USING(transaction_id) WHERE h.transaction_id=%s AND h." + column + "=%s", [order_id, request.user.pk])
     if not order:
         raise Http404
+    order["display_status"] = "pending" if order["status"] in ("placed", "accepted") else order["status"]
     events = rows("SELECT * FROM order_status_history WHERE transaction_id=%s ORDER BY event_id", [order_id])
     context = {"title": f"Order #{order_id}", "order": order, "events": events, "role": role}
     if request.method == "POST":
@@ -149,7 +162,7 @@ def order_detail(request, order_id, role="buyer"):
         except (DatabaseError, ValidationError) as error:
             return fail(request, error, "buyer/order.html", context)
         messages.success(request, "Order updated with a retained history event.")
-        return redirect(f"/{role}-app/orders/{order_id}/")
+        return redirect(f"{'/sell' if role == 'seller' else ''}/orders/{order_id}/")
     return render(request, "buyer/order.html", context)
 
 
@@ -157,12 +170,12 @@ def order_detail(request, order_id, role="buyer"):
 @require_POST
 def start_conversation(request, product_id):
     listing = listing_record(product_id)
-    if not listing or listing["visibility"] != "visible" or listing["availability"] == "draft" or listing["seller_id"] == request.user.pk:
+    if not listing or listing["visibility"] != "visible" or listing["availability"] == "draft" or listing["assessment_state"] != "ready" or listing["seller_id"] == request.user.pk or listing["seller_status"] != "active" or not listing["seller_auth_active"]:
         raise Http404
     with actor_transaction(request.user):
         conversation = one("INSERT INTO conversations(product_id,buyer_id) VALUES(%s,%s) ON CONFLICT(product_id,buyer_id) DO NOTHING RETURNING conversation_id", [product_id, request.user.pk])
         conversation = conversation or one("SELECT conversation_id FROM conversations WHERE product_id=%s AND buyer_id=%s", [product_id, request.user.pk])
-    return redirect(f"/buyer-app/conversations/{conversation['conversation_id']}/")
+    return redirect(f"/conversations/{conversation['conversation_id']}/")
 
 
 def conversation_record(request, conversation_id, role):
@@ -175,6 +188,7 @@ def conversation_record(request, conversation_id, role):
     return record
 
 
+@login_required
 def conversations(request, role="buyer"):
     role_gate(request, role)
     column = "c.buyer_id" if role == "buyer" else "p.seller_id"
@@ -186,6 +200,7 @@ def conversations(request, role="buyer"):
     return render(request, "buyer/conversations.html", {"title": "Messages", "conversations": result, "role": role, "page": page})
 
 
+@login_required
 def conversation_detail(request, conversation_id, role="buyer"):
     conversation = conversation_record(request, conversation_id, role)
     history = rows("SELECT message_id,sender_id,message_text,sent_at,read_at FROM chat_messages WHERE conversation_id=%s ORDER BY message_id DESC LIMIT 50", [conversation_id])
@@ -201,10 +216,11 @@ def conversation_detail(request, conversation_id, role="buyer"):
             with actor_transaction(request.user):
                 rows("INSERT INTO chat_messages(conversation_id,sender_id,message_text) VALUES(%s,%s,%s)", [conversation_id, request.user.pk, text])
             messages.success(request, "Message sent.")
-            return redirect(f"/{role}-app/conversations/{conversation_id}/")
+            return redirect(f"{'/sell' if role == 'seller' else ''}/conversations/{conversation_id}/")
     return render(request, "buyer/conversation.html", context)
 
 
+@login_required
 def poll_messages(request, conversation_id, role="buyer"):
     conversation_record(request, conversation_id, role)
     try:
@@ -223,6 +239,7 @@ def poll_messages(request, conversation_id, role="buyer"):
 
 
 @require_POST
+@login_required
 def mark_read(request, conversation_id, role="buyer"):
     conversation_record(request, conversation_id, role)
     try:
@@ -262,7 +279,9 @@ def report_new(request, product_id):
             raise Http404
         initial["revision_no"] = order["revision_no"]
         listing = listing_record(product_id, order["revision_no"])
-    elif listing["visibility"] != "visible" or listing["availability"] == "draft":
+    elif (listing["visibility"] != "visible" or listing["availability"] == "draft"
+          or listing["assessment_state"] != "ready" or listing["seller_status"] != "active"
+          or not listing["seller_auth_active"]):
         raise Http404
     form = ReportForm(request.POST or None, initial=initial)
     context = {"title": "Report a concern", "listing": listing, "form": form}
@@ -290,7 +309,7 @@ def report_new(request, product_id):
                     stored.append(metadata)
                     rows("INSERT INTO report_attachments(report_id,storage_key,sort_order,content_type,byte_size,content_sha256) VALUES(%s,%s,%s,%s,%s,%s)", [report["report_id"], metadata["storage_key"], index, metadata["content_type"], metadata["byte_size"], metadata["content_sha256"]])
             messages.success(request, "Concern submitted. Evidence is private to you and authorized administrators.")
-            return redirect(f"/buyer-app/reports/{report['report_id']}/")
+            return redirect(f"/reports/{report['report_id']}/")
         except (DatabaseError, ValidationError, OSError) as error:
             for metadata in stored:
                 try:
@@ -356,7 +375,7 @@ def append_evidence(request, report_id):
                     VALUES(%s,%s,%s,%s,%s,%s)""", [report_id, metadata["storage_key"], index, metadata["content_type"],
                     metadata["byte_size"], metadata["content_sha256"]])
         messages.success(request, "Private evidence added to your existing case.")
-        return redirect(f"/buyer-app/reports/{report_id}/")
+        return redirect(f"/reports/{report_id}/")
     except (ValidationError, DatabaseError, OSError) as error:
         for metadata in written:
             try:
@@ -381,4 +400,34 @@ def evidence(request, attachment_id):
     response["Cache-Control"] = "private, no-store"
     response["Content-Disposition"] = 'inline; filename="evidence' + path.suffix + '"'
     response["X-Content-Type-Options"] = "nosniff"
+    return response
+
+
+def listing_image(request, storage_key):
+    """Authorize immutable images, including direct URLs for unscanned revisions."""
+    image = one("""SELECT i.*,p.seller_id,p.current_revision_no,p.visibility,p.availability,
+        u.status AS seller_status,u.is_active AS seller_active,
+        listing_publication_allowed(p.product_id) AS publication_allowed
+        FROM product_images i JOIN products p USING(product_id) JOIN users u ON u.user_id=p.seller_id
+        WHERE i.storage_key=%s""", [storage_key])
+    if not image:
+        raise Http404
+    public = (image["revision_no"] == image["current_revision_no"] and image["visibility"] == "visible"
+              and image["availability"] != "draft" and image["seller_status"] == "active"
+              and image["seller_active"] and image["publication_allowed"])
+    if not public:
+        allowed = request.user.is_authenticated and (
+            request.user.pk == image["seller_id"] or (has_role(request.user, "administrator") and request.user.status == "active") or
+            one("SELECT 1 FROM transactions WHERE product_id=%s AND revision_no=%s AND buyer_id=%s",
+                [image["product_id"], image["revision_no"], request.user.pk]) or
+            one("SELECT 1 FROM fraud_reports WHERE product_id=%s AND revision_no=%s AND reporter_id=%s",
+                [image["product_id"], image["revision_no"], request.user.pk]))
+        if not allowed:
+            raise Http404
+    from marketplace.uploads import _path
+    try:
+        response = FileResponse(_path(storage_key).open("rb"), content_type=image["content_type"])
+    except FileNotFoundError as exc:
+        raise Http404 from exc
+    response["Cache-Control"] = "private, no-store"
     return response

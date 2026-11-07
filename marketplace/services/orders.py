@@ -40,13 +40,15 @@ def place_order(user, product_id, revision_no, request_key, acknowledge=False, r
                 raise ValidationError("Order review expired. Review the listing again.") from error
             if reviewed != [product_id, revision_no, review_state(risk or {})]:
                 raise ValidationError("The listing assessment changed. Review the current listing before ordering.")
+        if not risk or risk["assessment_state"] != "ready":
+            raise ValidationError("This listing is awaiting a current successful risk assessment.")
         if risk and risk["assessment_state"] == "ready" and risk["risk_level"] == "high" and not acknowledge:
             raise ValidationError("Review the High risk warning and acknowledge it before ordering.")
         return one("SELECT place_order(%s,%s,%s,%s::uuid,%s) AS order_id", [user.pk, product_id, revision_no, str(request_key), fingerprint])["order_id"]
 
 
 def transition_order(user, order_id, next_status, reason, expected_status):
-    if not reason.strip():
+    if not reason or not reason.strip():
         raise ValidationError("A reason is required.")
     with actor_transaction(user, reason):
         order = one("SELECT t.*,p.seller_id FROM transactions t JOIN products p USING(product_id) WHERE transaction_id=%s", [order_id])

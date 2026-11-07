@@ -36,3 +36,6 @@ Thumbs.db
 /runtime/
 /exports/
 /.local/
+
+# Local supplied provisioning credentials
+/Problem for update.txt

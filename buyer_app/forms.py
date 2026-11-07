@@ -4,8 +4,8 @@ from django import forms
 class SearchForm(forms.Form):
     q = forms.CharField(max_length=200, required=False, label="Search listings")
     category = forms.ChoiceField(required=False, choices=[("", "All categories")])
-    minimum = forms.DecimalField(min_value=0, required=False, label="Minimum price")
-    maximum = forms.DecimalField(min_value=0, required=False, label="Maximum price")
+    minimum = forms.DecimalField(min_value=0, max_digits=12, decimal_places=2, required=False, label="Minimum price")
+    maximum = forms.DecimalField(min_value=0, max_digits=12, decimal_places=2, required=False, label="Maximum price")
     condition = forms.ChoiceField(required=False, choices=[("", "All conditions")] + [(x, x.replace("_", " ").title()) for x in ("like_new", "good", "fair", "poor")])
     location = forms.CharField(max_length=150, required=False)
     risk = forms.ChoiceField(required=False, choices=[("", "All risk states"), ("low", "Current low risk"), ("medium", "Current medium risk"), ("high", "Current high risk"), ("unassessed", "Unassessed / stale")])

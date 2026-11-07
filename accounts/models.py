@@ -41,3 +41,13 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     def __str__(self):
         return self.full_name
+
+
+class AdministratorTransition(models.Model):
+    created_at = models.DateTimeField(default=timezone.now)
+    target = models.ForeignKey(User, on_delete=models.PROTECT)
+    previous_admin_ids = models.JSONField(default=list)
+    reason = models.TextField()
+
+    class Meta:
+        db_table = "administrator_transitions"

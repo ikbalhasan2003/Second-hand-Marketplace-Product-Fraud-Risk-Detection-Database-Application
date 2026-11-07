@@ -1,8 +1,8 @@
 {% load static %}<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{ title|default:'Secondhand Market' }}</title><link rel="stylesheet" href="{% static 'vendor/bootstrap.min.css' %}"><link rel="stylesheet" href="{% static 'app.css' %}"></head>
-<body data-user-id="{{ user.pk|default:'visitor' }}"><a class="skip-link" href="#main">Skip to content</a><header class="border-bottom bg-white">{% include 'components/navigation.html' %}</header>
+<body class="shell-{{ shell }}" data-user-id="{{ user.pk|default:'visitor' }}"><a class="skip-link" href="#main">Skip to content</a><header class="border-bottom bg-white">{% include 'components/navigation.html' %}</header>
 <main id="main" class="container py-4" tabindex="-1">{% include 'components/restriction.html' %}
-{% for message in messages %}<div class="alert alert-info" role="status" {% if message.level == 25 %}data-committed{% endif %}>{{ message }}</div>{% endfor %}<h1>{{ title }}</h1>{% block content %}{% endblock %}</main>
-<footer class="container border-top py-4 text-muted">Course demonstration · Purchase agreements only · No payment processing. Risk indicators are not fraud verdicts.</footer>
+{% for message in messages %}<div class="alert alert-info" role="status" {% if message.level == 25 %}data-committed{% endif %}>{{ message }}</div>{% endfor %}<div class="page-heading">{% block page_heading %}<p class="eyebrow">{% if shell == 'admin' %}Marketplace moderation{% elif shell == 'seller' %}Your seller workspace{% else %}Secondhand Market{% endif %}</p><h1>{{ title }}</h1>{% endblock %}</div>{% block content %}{% endblock %}</main>
+<footer class="container border-top py-4 text-muted"><strong>Secondhand Market</strong><p class="mt-2 mb-0">A new chapter for pre-owned things.</p><small>Purchase agreements only &middot; No payment processing. Risk indicators are not fraud verdicts.</small></footer>
 <script src="{% static 'app.js' %}" defer></script><script src="{% static 'risk.js' %}" defer></script>{% block scripts %}{% endblock %}</body></html>

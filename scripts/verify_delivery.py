@@ -108,9 +108,9 @@ def benchmark_search():
     from django.db import connections
     from django.test import Client
     barrier = threading.Barrier(10)
-    urls = ["/buyer-app/listings/?q=lamp", "/buyer-app/listings/?q=study&condition=good",
-            "/buyer-app/listings/?maximum=120&location=Shanghai", "/buyer-app/listings/?q=lamp&risk=low",
-            "/buyer-app/listings/?q=book&sort=price"]
+    urls = ["/listings/?q=lamp", "/listings/?q=study&condition=good",
+            "/listings/?maximum=120&location=Shanghai", "/listings/?q=lamp&risk=low",
+            "/listings/?q=book&sort=price"]
     # Warm every query before timed concurrent requests; no images are requested.
     client = Client()
     for url in urls:
@@ -228,19 +228,19 @@ def verify_restored(workspace):
     checks["restricted_effective_role"] = one("SELECT current_user AS name")["name"] == os.environ["PGUSER"]
     client = Client()
     client.force_login(User.objects.get(pk=ids["buyer_id"]))
-    checks["purchased_snapshot_http"] = client.get(f"/buyer-app/orders/{ids['order_id']}/").status_code == 200
-    checks["report_status_http"] = client.get(f"/buyer-app/reports/{ids['report_id']}/").status_code == 200
-    response = client.get(f"/buyer-app/evidence/{ids['attachment_id']}/")
+    checks["purchased_snapshot_http"] = client.get(f"/orders/{ids['order_id']}/").status_code == 200
+    checks["report_status_http"] = client.get(f"/reports/{ids['report_id']}/").status_code == 200
+    response = client.get(f"/evidence/{ids['attachment_id']}/")
     checks["private_evidence_reporter_http"] = response.status_code == 200
     response.close()
     client.force_login(User.objects.get(pk=ids["outsider_id"]))
-    checks["private_evidence_unrelated_denied"] = client.get(f"/buyer-app/evidence/{ids['attachment_id']}/").status_code == 404
-    checks["unrelated_order_denied"] = client.get(f"/buyer-app/orders/{ids['order_id']}/").status_code == 404
+    checks["private_evidence_unrelated_denied"] = client.get(f"/evidence/{ids['attachment_id']}/").status_code == 404
+    checks["unrelated_order_denied"] = client.get(f"/orders/{ids['order_id']}/").status_code == 404
     client.force_login(User.objects.get(pk=ids["seller_id"]))
-    checks["seller_historical_revision_http"] = client.get(f"/seller-app/listings/{ids['product_id']}/revisions/1/").status_code == 200
-    checks["seller_private_evidence_denied"] = client.get(f"/buyer-app/evidence/{ids['attachment_id']}/").status_code == 404
+    checks["seller_historical_revision_http"] = client.get(f"/sell/listings/{ids['product_id']}/revisions/1/").status_code == 200
+    checks["seller_private_evidence_denied"] = client.get(f"/evidence/{ids['attachment_id']}/").status_code == 404
     client.force_login(User.objects.get(pk=ids["admin_id"]))
-    response = client.get(f"/buyer-app/evidence/{ids['attachment_id']}/")
+    response = client.get(f"/evidence/{ids['attachment_id']}/")
     checks["administrator_private_evidence_http"] = response.status_code == 200
     response.close()
     for url in ("/admin-app/", "/admin-app/reviews/", "/admin-app/models/", "/admin-app/audit-log/", "/admin-app/exports/"):

@@ -19,6 +19,12 @@ if (-not (Test-Path -LiteralPath $pythonPath)) {
 }
 & $pythonPath -c "import sys; assert sys.version_info[:2] == (3,13), 'Python 3.13 is required'"
 if ($LASTEXITCODE -ne 0) { throw 'Wrong Python interpreter.' }
+& $pythonPath -c "import importlib.util, sys; sys.exit(0 if importlib.util.find_spec('pip') else 1)"
+if ($LASTEXITCODE -ne 0) {
+    Write-Host 'Restoring pip in the virtual environment.'
+    & $pythonPath -m ensurepip --upgrade
+    if ($LASTEXITCODE -ne 0) { throw 'Could not restore pip. Run .venv\Scripts\python.exe -m ensurepip --upgrade.' }
+}
 & $pythonPath -m pip install -r requirements/lock.txt
 if ($LASTEXITCODE -ne 0) { throw 'Dependency installation failed.' }
 if (-not (Test-Path -LiteralPath '.env')) {

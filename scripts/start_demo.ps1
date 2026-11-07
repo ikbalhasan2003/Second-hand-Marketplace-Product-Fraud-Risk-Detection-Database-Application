@@ -22,7 +22,7 @@ if ($WithWorker) {
 $processes | ConvertTo-Json | Set-Content -LiteralPath $processFile -Encoding utf8
 Start-Sleep -Seconds 2
 if ($web.HasExited) { throw 'Web process stopped. Inspect runtime/web.err.log and runtime/web.out.log.' }
-Write-Host "Buyer: http://127.0.0.1:$Port/buyer-app/"
-Write-Host "Seller: http://127.0.0.1:$Port/seller-app/"
+Write-Host "Buyer: http://127.0.0.1:$Port/"
+Write-Host "Seller: http://127.0.0.1:$Port/sell/"
 Write-Host "Admin: http://127.0.0.1:$Port/admin-app/"
 Write-Host 'Private demo credentials: runtime/DEMO_CREDENTIALS.txt. Logs: runtime/*.log.'

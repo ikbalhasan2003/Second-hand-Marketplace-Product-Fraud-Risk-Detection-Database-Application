@@ -83,6 +83,17 @@
     });
   } catch { /* Storage can be disabled; normal server forms continue working. */ }
   document.querySelectorAll('select[data-selected]').forEach(select => {select.value = select.dataset.selected;});
-  document.querySelectorAll('nav a').forEach(link => {if (link.pathname === location.pathname) link.setAttribute('aria-current', 'page');});
+  document.querySelectorAll('nav a').forEach(link => {if (!link.closest('.category-nav') && link.pathname === location.pathname && link.search === location.search) link.setAttribute('aria-current', 'page');});
   document.querySelectorAll('.table-responsive').forEach(region => {region.tabIndex = 0; region.setAttribute('role', 'region'); region.setAttribute('aria-label', region.querySelector('caption')?.textContent || 'Scrollable records');});
 })();
+// Preserve an honest photo state when a stored listing image cannot be loaded.
+document.querySelectorAll('img.listing-image').forEach(image => {
+  const unavailable = () => {
+    const state = document.createElement('div');
+    state.className = 'image-placeholder';
+    state.textContent = 'Photo unavailable';
+    image.replaceWith(state);
+  };
+  image.addEventListener('error', unavailable, {once: true});
+  if (image.complete && image.naturalWidth === 0) unavailable();
+});

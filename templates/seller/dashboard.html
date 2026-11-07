@@ -1,6 +1,6 @@
 {% extends 'base.html' %}{% block content %}{% include 'seller/nav.html' %}
 <div class="row g-3 mb-4">
-<div class="col-md-4"><div class="card card-body"><a href="?visibility=visible">Active listings</a><strong class="fs-2">{{ metrics.active }}</strong><small>Visible, available or reserved</small></div></div>
+<div class="col-md-4"><div class="card card-body"><a href="?visibility=visible&amp;assessment_state=ready">Active listings</a><strong class="fs-2">{{ metrics.active }}</strong><small>Published, available or reserved</small></div></div>
 <div class="col-md-4"><div class="card card-body"><a href="?availability=sold">Sold listings</a><strong class="fs-2">{{ metrics.sold }}</strong><small>Sold availability, all visibility states</small></div></div>
 <div class="col-md-4"><div class="card card-body"><a href="?risk_level=high&amp;assessment_state=ready">High-risk active listings</a><strong class="fs-2">{{ metrics.high }}</strong><small>Current completed assessments among active listings</small></div></div>
 </div>
@@ -12,11 +12,11 @@
 <div class="col-md-2"><label for="risk">Current risk</label><select id="risk" name="risk_level" data-selected="{{ request.GET.risk_level }}" class="form-select"><option value="">All</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select></div>
 <div class="col-md-1 align-self-end"><button class="btn btn-primary">Filter</button></div></form>
 {% for product in page %}<article class="card mb-3"><div class="card-body"><div class="d-flex flex-wrap justify-content-between gap-2">
-<div><h2 class="h5">{{ product.title|default:'Untitled draft' }}</h2><p>Listing #{{ product.product_id }} · {% if product.current_revision_no %}r{{ product.current_revision_no }}{% else %}Private draft{% endif %}</p>
-{% if product.price %}<p>{{ product.currency }} {{ product.price }}</p>{% endif %}<p><strong>{{ product.availability|title }}</strong> · {{ product.visibility }}</p></div>
+<div><h2 class="h5">{{ product.title|default:'Untitled draft' }}</h2><p>Listing #{{ product.product_id }} Ã‚Â· {% if product.current_revision_no %}r{{ product.current_revision_no }}{% else %}Private draft{% endif %}</p>
+{% if product.price %}<p>{{ product.currency }} {{ product.price }}</p>{% endif %}<p><strong>{% if product.assessment_state != "ready" and product.availability == "available" %}Awaiting publication{% else %}{{ product.availability|title }}{% endif %}</strong> Ã‚Â· {{ product.visibility }}</p></div>
 <div>{% include 'seller/risk.html' %}<p class="small">Updated {{ product.updated_at|date:'Y-m-d H:i T' }}</p></div></div>
 <div class="d-flex flex-wrap gap-3"><a href="{% url 'seller_revisions' product.product_id %}">Revision and assessment history</a>
-{% if product.current_revision_no %}<a href="/buyer-app/listings/{{ product.product_id }}/">Public listing</a>{% endif %}
+{% if product.current_revision_no %}<a href="/listings/{{ product.product_id }}/">{% if product.assessment_state == "ready" %}Public listing{% else %}Preview submitted listing{% endif %}</a>{% endif %}
 {% if user.status == 'active' and not product.locked and product.visibility != 'removed_by_admin' %}<a href="{% url 'seller_edit' product.product_id %}">Edit / private draft</a>{% else %}<span>Editing restricted</span>{% endif %}
 {% if user.status == 'active' and product.availability == 'available' and product.visibility == 'visible' and not product.locked %}
 <form action="{% url 'seller_withdraw' product.product_id %}" method="post">{% csrf_token %}<button class="btn btn-outline-secondary btn-sm">Withdraw listing</button></form>{% endif %}</div>
